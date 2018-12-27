@@ -1,0 +1,72 @@
+---
+title: "Hyperspectral Analysis"
+author: "Victoria Scholl"
+date: "12/27/2018"
+output: html_document
+---
+
+This document outlines the workflow that integrates field-based tree measurements with airborne remote sensing data from the National Ecological Observatory Network (NEON). 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE,
+                      results = 'hide')
+```
+
+First, load the required R packages for this analysis. 
+
+```{r load_packages}
+# load necessary R packages 
+library(rhdf5)
+library(rgdal)
+library(raster)
+library(ggplot2)
+library(tidyr)
+library(sf)
+library(dplyr)
+library(data.table) 
+
+# set working directory
+setwd("~/github/jubilant-waffle/code/")
+
+# load any local functions in external files 
+source("supporting_functions.R")
+```
+
+Specify where the hyperspectral data and shapefiles are located. 
+
+* This project is currently structured with "code", "data", and "output" top-level directories.
+* Within "data", each NEON site has its own directory named with the site code (such as "NIWO" for Niwot Ridge). 
+* The polygon and point shapefiles will be used to clip hyperspectral data to obtain spectral reflectance for each tree location. 
+
+```{r directory_input_output}
+# code for NEON site 
+site_code <- 'NIWO'
+
+# directory with hyperspectral .h5 files
+h5_dir <- paste0('../data/', site_code, '/hyperspectral/')
+
+# directory with shapefiles (tree stem locations and crown polygons)
+shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
+
+# define the output directory. If it doesn't exist already, create it.
+check_create_dir('../output/') # create top level "output" directory
+out_dir <- paste0('../output/', site_code)
+check_create_dir(out_dir) # create output folder for site
+```
+
+Read the shapefiles.
+After following the neon_veg workflow, 
+
+```{r read_shapefiles}
+# read tree polygons file 
+tree_polygons <- rgdal::readOGR(dsn = shapefile_dir,
+                           layer = "polygons_checked_overlap")
+
+# read the tree stem locations file
+tree_stems <- rgdal::readOGR(dsn = shapefile_dir,
+                              layer = "mapped_stems_final")
+```
+
+The hyperspectral data 
