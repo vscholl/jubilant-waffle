@@ -61,7 +61,7 @@ shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
 
 # define the output directory. If it doesn't exist already, create it.
 check_create_dir('../output/') # create top level "output" directory
-out_dir <- paste0('../output/', site_code)
+out_dir <- paste0('../output/', site_code, '/')
 check_create_dir(out_dir) # create output folder for site
 
 # define the "bad bands" wavelength ranges in nanometers, where atmospheric 
@@ -210,7 +210,35 @@ refl_scaled <- refl / scale_factor
 
 ## Extract reflectance spectra for each tree from hyperspectral imagery 
 
-As this [Earth Lab tutorial](https://www.earthdatascience.org/courses/earth-analytics/lidar-raster-data-r/crop-raster-data-in-r/) describes, there is an **extract** function within the **raster** R package. It requires raster and and vector objects. Let's stack up all of the hyperspectral bands into a rasterstack as the raster input to this function. 
+As this [Earth Lab tutorial](https://www.earthdatascience.org/courses/earth-analytics/lidar-raster-data-r/crop-raster-data-in-r/) describes, there is an **extract** function within the **raster** R package. It requires raster and and vector objects. 
+
+As for the vector layers, let's figure out which trees are within the current tile and convert their corresponding points and polygons from SF objects to SpatialPoints and SpatialPolygons forms. 
+
+```{r polygons_in_tile}
+# figure out which trees are within the current tile 
+polygons_in <- tree_polygons_points %>% 
+  dplyr::filter(xmin >= tile_extent@xmin & 
+                xmax < tile_extent@xmax & 
+                ymin >= tile_extent@ymin & 
+                ymax < tile_extent@ymax)
+
+print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
+
+# if no polygons are within the current tile, skip to the next one
+if (nrow(polygons_in)==0){
+  print("no trees located within current tile... skipping to next tile")
+  next
+}
+
+# convert from SF obect to SpatialPolygons object for clipping
+polygons_in_sp <- sf::as_Spatial(polygons_in$geometry.polygon,
+                                 IDs = as.character(polygons_in$indvdID))
+points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
+                                 IDs = as.character(polygons_in$indvdID))
+
+```
+
+Let's stack up all of the hyperspectral bands into a rasterstack as the raster input to this function. 
 
 ```{r create_hyperspectral_rasterstack}
 
@@ -238,32 +266,6 @@ for(b in 2:n_bands){
 
 # adjust the names for each layer in raster stack to correspond to wavelength
 names(s) <- round(wavelengths)
-```
-
-As for the vector layers, let's figure out which trees are within the current tile and convert their corresponding points and polygons from SF objects to SpatialPoints and SpatialPolygons forms. 
-
-```{r polygons_in_tile}
-# figure out which trees are within the current tile 
-polygons_in <- tree_polygons_points %>% 
-  dplyr::filter(xmin > tile_extent@xmin & 
-                  xmax < tile_extent@xmax & 
-                  ymin > tile_extent@ymin & 
-                  ymax < tile_extent@ymax)
-
-print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
-
-# if no polygons are within the current tile, skip to the next one
-if (nrow(polygons_in)==0){
-  print("no trees located within current tile")
-  next
-}
-
-# convert from SF obect to SpatialPolygons object for clipping
-polygons_in_sp <- sf::as_Spatial(polygons_in$geometry.polygon,
-                                 IDs = as.character(polygons_in$indvdID))
-points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
-                                 IDs = as.character(polygons_in$indvdID))
-
 ```
 
 Let's clip the scaled hyperspectral reflectance rasterstack with the tree polygons to extract reflectance curves for each tree stem point, and within each polygon area. 

@@ -25,7 +25,7 @@ shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
 
 # define the output directory. If it doesn't exist already, create it.
 check_create_dir('../output/') # create top level "output" directory
-out_dir <- paste0('../output/', site_code)
+out_dir <- paste0('../output/', site_code, '/')
 check_create_dir(out_dir) # create output folder for site
 
 # define the "bad bands" wavelength ranges in nanometers, where atmospheric 
@@ -144,6 +144,31 @@ for (h5 in h5_list) {
   x_max <- (x_min + (n_cols * res_x))
   y_min <- (y_max - (n_rows * res_y))
   tile_extent <- raster::extent(x_min, x_max, y_min, y_max)
+  print("tile extent")
+  print(tile_extent)
+  
+  # figure out which trees are within the current tile 
+  polygons_in <- tree_polygons_points %>% 
+    dplyr::filter(xmin >= tile_extent@xmin & 
+                    xmax < tile_extent@xmax & 
+                    ymin >= tile_extent@ymin & 
+                    ymax < tile_extent@ymax)
+  
+  print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
+  
+  # if no polygons are within the current tile, skip to the next one
+  if (nrow(polygons_in)==0){
+    print("no trees located within current tile... skipping to next tile")
+    next
+  }
+  
+  # convert from SF obect to SpatialPolygons object for clipping
+  polygons_in_sp <- sf::as_Spatial(polygons_in$geometry.polygon,
+                                   IDs = as.character(polygons_in$indvdID))
+  points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
+                                 IDs = as.character(polygons_in$indvdID))
+  
+  
   
   # read reflectance data for all bands
   refl <- rhdf5::h5read(h5, refl_tag,
@@ -180,27 +205,6 @@ for (h5 in h5_list) {
   
   # adjust the names for each layer in raster stack to correspond to wavelength
   names(s) <- round(wavelengths)
-  
-  # figure out which trees are within the current tile 
-  polygons_in <- tree_polygons_points %>% 
-    dplyr::filter(xmin > tile_extent@xmin & 
-                    xmax < tile_extent@xmax & 
-                    ymin > tile_extent@ymin & 
-                    ymax < tile_extent@ymax)
-  
-  print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
-  
-  # if no polygons are within the current tile, skip to the next one
-  if (nrow(polygons_in)==0){
-    print("no trees located within current tile")
-    next
-  }
-  
-  # convert from SF obect to SpatialPolygons object for clipping
-  polygons_in_sp <- sf::as_Spatial(polygons_in$geometry.polygon,
-                                   IDs = as.character(polygons_in$indvdID))
-  points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
-                                 IDs = as.character(polygons_in$indvdID))
   
   # clip the hyperspectral raster stack with the polygons within current tile.
   # the returned objects are data frames, each row corresponds to a pixel in the
