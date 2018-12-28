@@ -273,21 +273,25 @@ for (i in 1:length(csvs)){
   csv <- read.csv(csvs[i])
   
   if(i==1){
-    spectra.all <- csv
+    spectra_all <- csv
   } else {
-    spectra.all <- rbind(spectra.all, csv)
+    # add a bias value to the ID column, so in the end
+    # the ID values will range from 1 to n_trees
+    csv$ID <- csv$ID + max(spectra_all$ID)
+    spectra_all <- rbind(spectra_all, csv)
   }
 }
 
-
+# remove the unneccessary column "X.1"
+spectra_all <- spectra_all %>% dplyr::select(-X.1)
 
 # write ALL the spectra to a single file 
-write.csv(spectra.all,
-          file=paste0(out.dir.spectra,site, "_spectral_reflectance_ALL.csv"))
+write.csv(spectra_all,
+          file=paste0(out_dir, site_code, "_spectral_reflectance_ALL.csv"))
 
 # write the exact wavelengths to file for future use 
 write.table(data.frame(wavelengths = wavelengths),
-            paste(out.dir.spectra,"wavelengths.txt"),
+            paste(out_dir,"wavelengths.txt"),
             sep="\n",
             row.names=FALSE)
 
@@ -297,5 +301,4 @@ write.table(data.frame(wavelengths = wavelengths),
 #                         skip = 1,
 #                         col.names = 'wavelength')
 
-# Plot spectra and color line by species ----------------------------------
 
