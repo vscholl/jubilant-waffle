@@ -63,6 +63,12 @@ shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
 check_create_dir('../output/') # create top level "output" directory
 out_dir <- paste0('../output/', site_code)
 check_create_dir(out_dir) # create output folder for site
+
+# define the "bad bands" wavelength ranges in nanometers, where atmospheric 
+# absorption creates unreliable reflectance values. 
+# --> Instead, read the bad band ranges from metadata?
+bad_band_window_1 <- c(1340, 1445)
+bad_band_window_2 <- c(1790, 1955)
 ```
 
 ## Read and pre-process vector data 
@@ -177,15 +183,6 @@ wavelength_tag <- paste0(h5_struct$group[grepl("/Reflectance/Metadata/Spectral_D
 wavelengths <- rhdf5::h5read(h5,
                              wavelength_tag)
 
-# define the "bad bands" wavelength ranges in nanometers, where atmospheric 
-# absorption creates unreliable reflectance values. 
-# --> Read the bad band ranges from metadata? <--
-bad_band_tag <- 
-  
-  
-bad_band_window_1 <- c(1340, 1445)
-bad_band_window_2 <- c(1790, 1955)
-
 # define spatial extent: extract resolution and origin coordinates
 map_info <- unlist(strsplit(crs_info$Map_Info, 
                             split = ", "))
@@ -198,10 +195,6 @@ y_max <- as.numeric(map_info[5])
 x_max <- (x_min + (n_cols * res_x))
 y_min <- (y_max - (n_rows * res_y))
 tile_extent <- raster::extent(x_min, x_max, y_min, y_max)
-
-# print the extent of the current tile
-print("tile extent: ")
-tile_extent
 
 # read reflectance data for all bands
 refl <- rhdf5::h5read(h5, refl_tag,
@@ -247,7 +240,7 @@ for(b in 2:n_bands){
 names(s) <- round(wavelengths)
 ```
 
-As for the vector layers, let's figure out which trees are within the current til and convert their corresponding points and polygons from SF objects to SpatialPoints and SpatialPolygons forms. 
+As for the vector layers, let's figure out which trees are within the current tile and convert their corresponding points and polygons from SF objects to SpatialPoints and SpatialPolygons forms. 
 
 ```{r polygons_in_tile}
 # figure out which trees are within the current tile 
@@ -281,8 +274,8 @@ Let's clip the scaled hyperspectral reflectance rasterstack with the tree polygo
 # hyperspectral imagery. The ID number refers to which polygon or point that 
 # the pixel belongs to. A large polygon will lead to many extracted pixels
 # (many rows in the output data frame)
-extracted_polygon_spectra <- raster::extract(s, polygons_in_sp, df = TRUE)
 extracted_point_spectra <- raster::extract(s, points_in_sp, df = TRUE)
+extracted_polygon_spectra <- raster::extract(s, polygons_in_sp, df = TRUE)
 ```
 
 In the resulting data frames, each row contains a single reflectance spectrum, corresponding to a single pixel location (x,y) in the hyperspectral imagery. 
@@ -349,6 +342,9 @@ write.csv(spectra_write, file = paste0(out_dir,
                                         as.character(tile_extent@ymin),".csv")) 
   
 ```
+
+
+# Spectral Analysis
 
 ## Plot reflectance spectra
 
@@ -478,15 +474,24 @@ ggplot(data = spectra_tree,
 
 
 
-
-
-
 To visualize the variation of spectra per species, let's add shadded regions to capture the minimum and maximum reflectance per wavelength and see if there are any notable divergences between species. 
 
 ```{r}
 # for each species, plot the mean reflectance curve with the variation
-# shaded around it 
+# shaded around it.
+# shading could illustrate 95th confidence interval, min & max, ...
 
+
+
+ggplot(data = spectra_tree, 
+       aes(x = wavelength, 
+           y = reflectance, 
+           colour = taxonID)) +
+  geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
+  labs(x = "wavelength (nm)") + 
+  ggtitle("Hyperspectral reflectance for a single pixel") +
+          scale_color_manual(values = c("#1c9099")
+  )
 
 ```
 
