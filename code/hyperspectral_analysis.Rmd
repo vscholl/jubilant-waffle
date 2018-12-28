@@ -180,6 +180,9 @@ wavelengths <- rhdf5::h5read(h5,
 # define the "bad bands" wavelength ranges in nanometers, where atmospheric 
 # absorption creates unreliable reflectance values. 
 # --> Read the bad band ranges from metadata? <--
+bad_band_tag <- 
+  
+  
 bad_band_window_1 <- c(1340, 1445)
 bad_band_window_2 <- c(1790, 1955)
 
@@ -294,7 +297,7 @@ For instance, let's take a look at the first 12 rows of the extracted_point_spec
 head(extracted_point_spectra[,1:5], n = 12)
 ```
 
-The first 12 rows of the extracted_polygon_spectra look different. Rows 1 through 10 have an ID of 1. This means that tree 1 in the SpatialPolygons object intersected with 10 pixels in the hyperspectral imagery, so there are 10 spectra available for analysis. Tree 2 in the SpatialPolygons object intersects with more than 1 pixel too. We can see the beginning of those spectra in rows 11 and 12 below. 
+The first 12 rows of the extracted_polygon_spectra look different (specifically, the **ID** column). Rows 1 through 10 have an ID of 1. This means that tree 1 in the SpatialPolygons object intersected with 10 pixels in the hyperspectral imagery, so there are 10 spectra available for analysis. Tree 2 in the SpatialPolygons object intersects with more than 1 pixel too. We can see the beginning of those spectra in rows 11 and 12 below. 
 
 ```{r head_polygon_spectra, results = TRUE}
 head(extracted_polygon_spectra[,1:5], n = 12)
@@ -302,20 +305,44 @@ head(extracted_polygon_spectra[,1:5], n = 12)
 
 
 Write the spectral reflectance data to file for each tree. Combine each spectrum with more information about each corresponding tree (including the individual ID, species, and height).
-For the extracted spectra with more than one row per tree, adjust the 
+For the extracted spectra with more than one row per tree, adjust the "ID" column to reflect how many spectra correspond to each tree. 
 
-```{r combine_write_spectra}
+```{r combine_metadata_write_spectra, results = TRUE}
 
-# combine the additional data with each spectrum for writing to file
-spectra_write <- data.frame(individualID = polygons_in$indvdID,
+# create polygon metadata data frame 
+polygon_metadata <- data.frame(individualID = polygons_in$indvdID,
                               scientificName = polygons_in$scntfcN,
                               taxonID = polygons_in$taxonID,
                               maxCrownDiameter = polygons_in$crownDm,
                               height = polygons_in$height,
                               X = polygons_in$X,
                               Y = polygons_in$Y,
-                              as.data.frame(extracted_point_spectra))
+                              # create ID column to pair the polygon metadata with  spectra
+                              ID =  1:nrow(polygons_in))
+
+# create a list of increasing integer counts to keep track of how many rows 
+# (pixels or spectra) belong to each tree 
+for (i in unique(extracted_polygon_spectra$ID)){
+  if(i==1){
+    counts = 1:sum(extracted_polygon_spectra$ID==i)
+  }
+  else{
+    counts = append(counts, 1:sum(extracted_polygon_spectra$ID==i))
+  }
+}
+
+# combine the additional data with each spectrum for writing to file
+spectra_write <- merge(polygon_metadata,
+                       as.data.frame(extracted_polygon_spectra),
+                       by="ID") %>% 
+  mutate(spectra_count = counts)%>% 
+  select(ID, spectra_count, everything())
   
+# take a look at the first rows of the spectra data to write 
+head(spectra_write[,1:10] %>% select(-c(scientificName,X,Y)))
+
+
+# write the spectral data to file for future analysis 
 write.csv(spectra_write, file = paste0(out_dir,
                                        "spectral_reflectance_",
                                         as.character(tile_extent@xmin),"_",
@@ -338,8 +365,8 @@ spectra_1 <- spectra_all[1,] %>%
                 dplyr::select(-c(X,Y,ID))
 
 # organize the data into a data frame where the first column contains
-# the individual ID, second column contains scientific name, 
-# third column contains wavelength, and fourth column contains
+# the individualID, second column contains scientific name, 
+# followed by additional tree metadata and finally
 # reflectance per wavelength.  
 spectra_plot <- tidyr::gather(spectra_1,
                               key = wavelength,
@@ -348,7 +375,8 @@ spectra_plot <- tidyr::gather(spectra_1,
                               -scientificName,
                               -taxonID,
                               -maxCrownDiameter,
-                              -height)
+                              -height,
+                              -spectra_count)
 # add the actual wavelenth values into the wavelengths column
 spectra_plot$wavelength <- wavelengths
 
@@ -363,7 +391,8 @@ for (i in 2:nrow(spectra_all)){
                                 -scientificName,
                                 -taxonID,
                                 -maxCrownDiameter,
-                                -height)
+                                -height,
+                                -spectra_count)
   spectra_current$wavelength <- wavelengths
   
   spectra_plot <- rbind(spectra_plot, spectra_current)
@@ -384,16 +413,16 @@ spectra_plot$reflectance[spectra_plot$wavelength %in% remove_bands] <- NA
 
 ```{r point_spectra_single_plot, results=TRUE}
 # plot all spectra on single plot 
-legend_labels = c('a','b','c','d')
+# adjust line width and alpha for better visibility with many curves
 ggplot(data = spectra_plot, 
        aes(x = wavelength, 
            y = reflectance, 
            colour = taxonID)) +
-  geom_line(aes(group = individualID)) + 
+  geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
   labs(x = "wavelength (nm)", 
        color = "species") + 
   ggtitle("Hyperspectral reflectance extracted per center pixel") +
-          scale_color_manual(values = c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
+          scale_color_manual(values = c("#d7191c", "#fdae61", "#1BA7C9", "#2b83ba")
   )
 ```
 
@@ -409,8 +438,48 @@ ggplot(data = spectra_plot,
   facet_wrap(. ~ taxonID, ncol = 2) + 
   labs(x = "wavelength (nm)", color = "species") + 
   ggtitle("Hyperspectral reflectance extracted per center pixel") + 
-  scale_color_manual(values = c("#d7191c", "#fdae61", "#abdda4", "#2b83ba"))
+  scale_color_manual(values = c("#d7191c", "#fdae61", "#1BA7C9", "#2b83ba"))
 ```
+
+To assess the difference between a single stem location and a collection of pixels within a tree crown polygon, let's plot a single reflectance spectrum compared to a series of them. 
+
+```{r plot_compare_point_polygon}
+# single reflectance spectrum for a tree stem point
+spectra_tree <- spectra_plot %>% 
+              filter(individualID=="NEON.PLA.D13.NIWO.01131") 
+
+# all reflectance spectra for a tree polygon
+spectrum_tree <- spectra_plot %>% 
+              filter(individualID=="NEON.PLA.D13.NIWO.01131") %>%
+                filter(spectra_count==1)
+
+# plot reflectance spectrum for a single tree stem location pixel 
+ggplot(data = spectrum_tree, 
+       aes(x = wavelength, 
+           y = reflectance, 
+           colour = taxonID)) +
+  geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
+  labs(x = "wavelength (nm)") + 
+  ggtitle("Hyperspectral reflectance for a single pixel") +
+          scale_color_manual(values = c("#1c9099")
+  )
+
+# plot containing multiple pixels within a tree polygon
+ggplot(data = spectra_tree, 
+       aes(x = wavelength, 
+           y = reflectance, 
+           colour = taxonID)) +
+  geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
+  labs(x = "wavelength (nm)") + 
+  ggtitle("Hyperspectral reflectance for a single pixel") +
+          scale_color_manual(values = c("#1c9099")
+  )
+```
+
+
+
+
+
 
 To visualize the variation of spectra per species, let's add shadded regions to capture the minimum and maximum reflectance per wavelength and see if there are any notable divergences between species. 
 
@@ -422,3 +491,14 @@ To visualize the variation of spectra per species, let's add shadded regions to 
 ```
 
 ## Spectral seperability analysis
+
+R packages and resources to potentially utilize:
+
+* [separability](https://www.rdocumentation.org/packages/spatialEco/versions/1.1-0/topics/separability) 
+
+* [manual calculation](https://stats.stackexchange.com/questions/78849/measure-for-separability)
+
+
+
+
+
