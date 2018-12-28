@@ -1,0 +1,13 @@
+# R markdown output
+code/*.html
+code/*.pdf
+
+# data
+data/*
+
+# output files
+output/*
+
+# python jupyter notebook checkpoints
+.ipynb_checkpoints/* 
+
