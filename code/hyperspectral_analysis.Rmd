@@ -8,7 +8,9 @@ output:
     highlight: zenburn
 ---
 
-This document outlines the workflow that integrates field-based tree measurements with airborne remote sensing data from the National Ecological Observatory Network (NEON). 
+## Introduction
+
+This document outlines the workflow that integrates field-based tree measurements with airborne remote sensing data from the National Ecological Observatory Network (NEON). Using points and polygons generated using the [neon_veg](https://github.com/earthlab/neon-veg) workflow, this R code extracts reflectance values for each tree from hyperspectral image data and performs subsequent spectral analysis. 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
@@ -16,6 +18,10 @@ knitr::opts_chunk$set(echo = TRUE,
                       warning = FALSE,
                       results = 'hide')
 ```
+
+# Extract reflectance spectra 
+
+## Setup 
 
 First, load the required R packages for this analysis. 
 
@@ -59,10 +65,12 @@ out_dir <- paste0('../output/', site_code)
 check_create_dir(out_dir) # create output folder for site
 ```
 
+## Read and pre-process vector data 
+
 Read the shapefiles.
 The circular crown poylgons are read in as a SpatialPolygonsDataFrame.
 The tree stem locations are read in as a SpatialPointsDataFrame. 
-After following the [neon_veg](https://github.com/earthlab/neon-veg) workflow, .....
+After following the [neon_veg](https://github.com/earthlab/neon-veg) workflow, the *polygons_checked_overlap* shapefile contains polygons that have been checked for overlap with neighboring polygons, preserving those that are most likely visible in the airborne imagery. The *mapped_stems_final* shapefile contains the point locations of the corresponding tree stems. 
 
 ```{r read_shapefiles}
 # read tree polygons file 
@@ -114,6 +122,7 @@ tree_polygons_points <- merge(as.data.frame(tree_polygons_sf),
                 geometry.point = geometry.y)
 ```
 
+## Read and pre-process raster data 
 
 The hyperspectral data is available in 1km x 1km square tiles.
 
@@ -170,7 +179,7 @@ wavelengths <- rhdf5::h5read(h5,
 
 # define the "bad bands" wavelength ranges in nanometers, where atmospheric 
 # absorption creates unreliable reflectance values. 
-# --> Read the bad band ranges from metadata <--
+# --> Read the bad band ranges from metadata? <--
 bad_band_window_1 <- c(1340, 1445)
 bad_band_window_2 <- c(1790, 1955)
 
@@ -203,35 +212,11 @@ refl[refl == data_ignore] <- NA
 refl_scaled <- refl / scale_factor
 ```
 
-Figure out which polygons are within the current tile.
+## Extract reflectance spectra for each tree from hyperspectral imagery 
 
-```{r polygons_in_tile}
-# figure out which trees are within the current tile 
-polygons_in <- tree_polygons_points %>% 
-  dplyr::filter(xmin > tile_extent@xmin & 
-                  xmax < tile_extent@xmax & 
-                  ymin > tile_extent@ymin & 
-                  ymax < tile_extent@ymax)
+As this [Earth Lab tutorial](https://www.earthdatascience.org/courses/earth-analytics/lidar-raster-data-r/crop-raster-data-in-r/) describes, there is an **extract** function within the **raster** R package. It requires raster and and vector objects. Let's stack up all of the hyperspectral bands into a rasterstack as the raster input to this function. 
 
-print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
-
-# if no polygons are within the current tile, skip to the next one
-if (nrow(polygons_in)==0){
-  print("no trees located within current tile")
-  next
-}
-
-# convert from SF obect to SpatialPolygons object for clipping
-polygons_in_sp <- sf::as_Spatial(polygons_in$geometry.polygon,
-                                 IDs = as.character(polygons_in$indvdID))
-points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
-                                 IDs = as.character(polygons_in$indvdID))
-
-```
-
-Let's clip the scaled hyperspectral reflectance data to obtain reflectance curves for each tree stem point, and within each polygon area. 
-
-```{r clip_hyperspectral_w_polygons}
+```{r create_hyperspectral_rasterstack}
 
 # create georeferenced raster using band 1 
 r1 <- (refl_scaled[1,,]) # convert first band to matrix
@@ -257,7 +242,37 @@ for(b in 2:n_bands){
 
 # adjust the names for each layer in raster stack to correspond to wavelength
 names(s) <- round(wavelengths)
+```
 
+As for the vector layers, let's figure out which trees are within the current til and convert their corresponding points and polygons from SF objects to SpatialPoints and SpatialPolygons forms. 
+
+```{r polygons_in_tile}
+# figure out which trees are within the current tile 
+polygons_in <- tree_polygons_points %>% 
+  dplyr::filter(xmin > tile_extent@xmin & 
+                  xmax < tile_extent@xmax & 
+                  ymin > tile_extent@ymin & 
+                  ymax < tile_extent@ymax)
+
+print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
+
+# if no polygons are within the current tile, skip to the next one
+if (nrow(polygons_in)==0){
+  print("no trees located within current tile")
+  next
+}
+
+# convert from SF obect to SpatialPolygons object for clipping
+polygons_in_sp <- sf::as_Spatial(polygons_in$geometry.polygon,
+                                 IDs = as.character(polygons_in$indvdID))
+points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
+                                 IDs = as.character(polygons_in$indvdID))
+
+```
+
+Let's clip the scaled hyperspectral reflectance rasterstack with the tree polygons to extract reflectance curves for each tree stem point, and within each polygon area. 
+
+```{r extract_rasterstack_spectra}
 # clip the hyperspectral raster stack with the polygons within current tile.
 # the returned objects are data frames, each row corresponds to a pixel in the
 # hyperspectral imagery. The ID number refers to which polygon or point that 
@@ -267,7 +282,27 @@ extracted_polygon_spectra <- raster::extract(s, polygons_in_sp, df = TRUE)
 extracted_point_spectra <- raster::extract(s, points_in_sp, df = TRUE)
 ```
 
-Write the spectral reflectance data to file for each tree. 
+In the resulting data frames, each row contains a single reflectance spectrum, corresponding to a single pixel location (x,y) in the hyperspectral imagery. 
+
+* In the **extracted_point_spectra**, there is one row per tree stem.
+* In the **extracted_polygon_spectra**, there are multiple rows per tree polygon. A larger polygon will intersect with more pixels, producing more rows for trees with large crowns in this output data frame. 
+* The "ID" column contains an integer to identify which of the trees within the tile that the spectra belong to. 
+
+For instance, let's take a look at the first 12 rows of the extracted_point_spectra. Thee first 5 columns are displayed here, which contain "ID" values and the first few reflectance values for low wavelengths around 380nm. Notice that the ID column contains values that increase monotonically with rows for the extracted point spectra, since each tree stem point intersects with a single pixel in the hyperspectral imagery. 
+
+```{r head_point_spectra, results = TRUE}
+head(extracted_point_spectra[,1:5], n = 12)
+```
+
+The first 12 rows of the extracted_polygon_spectra look different. Rows 1 through 10 have an ID of 1. This means that tree 1 in the SpatialPolygons object intersected with 10 pixels in the hyperspectral imagery, so there are 10 spectra available for analysis. Tree 2 in the SpatialPolygons object intersects with more than 1 pixel too. We can see the beginning of those spectra in rows 11 and 12 below. 
+
+```{r head_polygon_spectra, results = TRUE}
+head(extracted_polygon_spectra[,1:5], n = 12)
+```
+
+
+Write the spectral reflectance data to file for each tree. Combine each spectrum with more information about each corresponding tree (including the individual ID, species, and height).
+For the extracted spectra with more than one row per tree, adjust the 
 
 ```{r combine_write_spectra}
 
@@ -280,8 +315,6 @@ spectra_write <- data.frame(individualID = polygons_in$indvdID,
                               X = polygons_in$X,
                               Y = polygons_in$Y,
                               as.data.frame(extracted_point_spectra))
-
-## VS_NOTE - REMOVE ID COLUMN! 
   
 write.csv(spectra_write, file = paste0(out_dir,
                                        "spectral_reflectance_",
@@ -290,7 +323,9 @@ write.csv(spectra_write, file = paste0(out_dir,
   
 ```
 
-Plot the reflectance as a function of wavelength.
+## Plot reflectance spectra
+
+Plot the reflectance spectra as a function of wavelength. First, let's see them all on a single graph, colored by species. 
 
 ```{r plot_spectra}
 
@@ -362,6 +397,8 @@ ggplot(data = spectra_plot,
   )
 ```
 
+We can also plot the reflectance spectra on four separate plots, one per species. 
+
 ```{r point_spectra_multi_plot, results=TRUE}
 # Use facet_grid for a separate plot per species 
 ggplot(data = spectra_plot, 
@@ -375,6 +412,8 @@ ggplot(data = spectra_plot,
   scale_color_manual(values = c("#d7191c", "#fdae61", "#abdda4", "#2b83ba"))
 ```
 
+To visualize the variation of spectra per species, let's add shadded regions to capture the minimum and maximum reflectance per wavelength and see if there are any notable divergences between species. 
+
 ```{r}
 # for each species, plot the mean reflectance curve with the variation
 # shaded around it 
@@ -382,3 +421,4 @@ ggplot(data = spectra_plot,
 
 ```
 
+## Spectral seperability analysis
