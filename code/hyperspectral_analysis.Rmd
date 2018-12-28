@@ -345,6 +345,18 @@ write.csv(spectra_write, file = paste0(out_dir,
   
 ```
 
+The accompanying *hyperspectral_analysis.R* script loops through all of the HDF5 files and extracts spectra using the steps described above. The spectra are written to separate .csv files for each tile, then combined into a single .csv tile for subsequent analysis. The code below reads the .csv file with all spectra. 
+
+```{r read_all_spectra}
+# read all of the reflectance spectra extracted for all trees in current site.
+# remove the column labeled "X.1", which just has row numbers. 
+spectra_all <- as.data.frame(read.csv(paste0(out_dir, 
+                                             site_code,
+                                             "_spectral_reflectance_ALL.csv"))) %>% 
+                  select(-X.1)
+```
+
+
 
 # Spectral Analysis
 
@@ -354,8 +366,10 @@ Plot the reflectance spectra as a function of wavelength. First, let's see them 
 
 ```{r plot_spectra}
 
-# VS_NOTE - LOOP THROUGH ALL TILES AND READ ALL SPECTRA INTO SINGLE DATA FRAME
-spectra_all <- spectra_write # single tile for testing
+# filter the spectra to reduce the number of them for quick visualization 
+# figure out how to extract spectra for the center pixels most efficiently, make a 
+# function out of hyperspectral_analysis.R? 
+
 
 # keep just the reflectance values along with individual ID and species
 # for the first tree
