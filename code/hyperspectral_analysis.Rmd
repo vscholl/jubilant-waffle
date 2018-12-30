@@ -238,7 +238,7 @@ points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
 
 ```
 
-Let's stack up all of the hyperspectral bands into a rasterstack as the raster input to this function. 
+Let's stack up all of the hyperspectral bands into a RasterStack (a collection of Raster layers with the same spatial resolution and extent) as the raster input to this function. 
 
 ```{r create_hyperspectral_rasterstack}
 
@@ -354,6 +354,13 @@ spectra_all <- as.data.frame(read.csv(paste0(out_dir,
                                              site_code,
                                              "_spectral_reflectance_ALL.csv"))) %>% 
                   select(-X.1)
+
+
+# filter the spectra to reduce the number of them for quick visualization 
+# figure out how to extract spectra for the center pixels most efficiently, make a 
+# function out of hyperspectral_analysis.R? 
+#spectra_all <- spectra_all %>% filter()
+spectra_all <- spectra_write # use the single tile spectra from above for quick viz 
 ```
 
 
@@ -365,11 +372,6 @@ spectra_all <- as.data.frame(read.csv(paste0(out_dir,
 Plot the reflectance spectra as a function of wavelength. First, let's see them all on a single graph, colored by species. 
 
 ```{r plot_spectra}
-
-# filter the spectra to reduce the number of them for quick visualization 
-# figure out how to extract spectra for the center pixels most efficiently, make a 
-# function out of hyperspectral_analysis.R? 
-
 
 # keep just the reflectance values along with individual ID and species
 # for the first tree
@@ -433,7 +435,7 @@ ggplot(data = spectra_plot,
   geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
   labs(x = "wavelength (nm)", 
        color = "species") + 
-  ggtitle("Hyperspectral reflectance extracted per center pixel") +
+  ggtitle("Hyperspectral reflectance extracted per pixel") +
           scale_color_manual(values = c("#d7191c", "#fdae61", "#1BA7C9", "#2b83ba")
   )
 ```
@@ -449,7 +451,7 @@ ggplot(data = spectra_plot,
   geom_line(aes(group = individualID), alpha = 0.5) + 
   facet_wrap(. ~ taxonID, ncol = 2) + 
   labs(x = "wavelength (nm)", color = "species") + 
-  ggtitle("Hyperspectral reflectance extracted per center pixel") + 
+  ggtitle("Hyperspectral reflectance extracted per pixel") + 
   scale_color_manual(values = c("#d7191c", "#fdae61", "#1BA7C9", "#2b83ba"))
 ```
 
@@ -458,11 +460,11 @@ To assess the difference between a single stem location and a collection of pixe
 ```{r plot_compare_point_polygon}
 # single reflectance spectrum for a tree stem point
 spectra_tree <- spectra_plot %>% 
-              filter(individualID=="NEON.PLA.D13.NIWO.01131") 
+              filter(individualID==as.character(spectra_plot$individualID[1])) 
 
 # all reflectance spectra for a tree polygon
 spectrum_tree <- spectra_plot %>% 
-              filter(individualID=="NEON.PLA.D13.NIWO.01131") %>%
+              filter(individualID==as.character(spectra_plot$individualID[1])) %>%
                 filter(spectra_count==1)
 
 # plot reflectance spectrum for a single tree stem location pixel 
@@ -492,7 +494,7 @@ ggplot(data = spectra_tree,
 
 To visualize the variation of spectra per species, let's add shadded regions to capture the minimum and maximum reflectance per wavelength and see if there are any notable divergences between species. 
 
-```{r}
+```{r eval = FALSE}
 # for each species, plot the mean reflectance curve with the variation
 # shaded around it.
 # shading could illustrate 95th confidence interval, min & max, ...

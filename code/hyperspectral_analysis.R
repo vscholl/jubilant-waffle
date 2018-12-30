@@ -149,7 +149,8 @@ for (h5 in h5_list) {
   #Error in (function (..., deparse.level = 1)  : 
   #number of columns of matrices must match (see arg 6)
   
-  
+  # Try substituting this 50% buffer parameter instead with the polygons
+  # created using neon_veg workflow with a 50% smaller diameter?????? 
   
   
   
@@ -189,10 +190,8 @@ for (h5 in h5_list) {
 }
   
   
-  
 
-  
-  
+
 
 # read and plot the spectra .csv files  -----------------------------------
 
@@ -234,4 +233,47 @@ write.table(data.frame(wavelengths = wavelengths),
 #                         skip = 1,
 #                         col.names = 'wavelength')
 
+
+
+
+
+
+
+
+
+# Testing: crop HS data using single polygon ------------------------------
+
+# read wavelengths
+wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
+                                           sep="\n",
+                                           skip = 1,
+                                           col.names = 'wavelength')))
+
+
+p <- polygons_in_sp[1]
+h5_cropped <- raster::crop(s, p)
+dim(h5_cropped)
+
+# get indices of RGB bands within the raster stack 
+wl_r <- which.min(abs(wavelengths - 669)) # R 
+wl_g <- which.min(abs(wavelengths - 549)) # G 
+wl_b <- which.min(abs(wavelengths - 474)) # B 
+
+h5_rgb <- raster::subset(h5_cropped, subset = c(wl_r, wl_g, wl_b)) 
+
+
+plotRGB(h5_rgb,
+        r = 1, g = 2, b = 3,
+        stretch = "hist",
+        axes = TRUE,
+        main="RGB Composite",
+        xlab="Easting (m)",
+        ylab="Northing (m)",
+        cex.main=2)
+
+# write cropped RGB RasterBrick to a tif
+writeRaster(h5_rgb,
+            paste0(out_dir,"myStack.tif"), 
+            format="GTiff",
+            overwrite=TRUE)
 
