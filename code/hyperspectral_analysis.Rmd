@@ -359,8 +359,9 @@ spectra_all <- as.data.frame(read.csv(paste0(out_dir,
 # filter the spectra to reduce the number of them for quick visualization 
 # figure out how to extract spectra for the center pixels most efficiently, make a 
 # function out of hyperspectral_analysis.R? 
-#spectra_all <- spectra_all %>% filter()
-spectra_all <- spectra_write # use the single tile spectra from above for quick viz 
+set.seed(12)
+spectra_all <- spectra_all[sample(nrow(spectra_all), size = 100),]
+#spectra_all <- spectra_write # use the single tile spectra from above for quick viz 
 ```
 
 
@@ -432,11 +433,11 @@ ggplot(data = spectra_plot,
        aes(x = wavelength, 
            y = reflectance, 
            colour = taxonID)) +
-  geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
+  geom_line(aes(group = individualID), size = 0.5, alpha = 0.7) + 
   labs(x = "wavelength (nm)", 
        color = "species") + 
   ggtitle("Hyperspectral reflectance extracted per pixel") +
-          scale_color_manual(values = c("#d7191c", "#fdae61", "#1BA7C9", "#2b83ba")
+          scale_color_manual(values = c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
   )
 ```
 
@@ -452,20 +453,19 @@ ggplot(data = spectra_plot,
   facet_wrap(. ~ taxonID, ncol = 2) + 
   labs(x = "wavelength (nm)", color = "species") + 
   ggtitle("Hyperspectral reflectance extracted per pixel") + 
-  scale_color_manual(values = c("#d7191c", "#fdae61", "#1BA7C9", "#2b83ba"))
+  scale_color_manual(values = c("#d7191c", "#fdae61", "#abdda4", "#2b83ba"))
 ```
 
 To assess the difference between a single stem location and a collection of pixels within a tree crown polygon, let's plot a single reflectance spectrum compared to a series of them. 
 
 ```{r plot_compare_point_polygon}
-# single reflectance spectrum for a tree stem point
+# all reflectance spectra for a tree polygon
 spectra_tree <- spectra_plot %>% 
               filter(individualID==as.character(spectra_plot$individualID[1])) 
 
-# all reflectance spectra for a tree polygon
-spectrum_tree <- spectra_plot %>% 
-              filter(individualID==as.character(spectra_plot$individualID[1])) %>%
-                filter(spectra_count==1)
+# single reflectance spectrum for a tree stem point
+spectrum_tree <- spectra_tree %>% 
+                  filter(spectra_count == spectra_tree$spectra_count[1])
 
 # plot reflectance spectrum for a single tree stem location pixel 
 ggplot(data = spectrum_tree, 
@@ -474,7 +474,7 @@ ggplot(data = spectrum_tree,
            colour = taxonID)) +
   geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
   labs(x = "wavelength (nm)") + 
-  ggtitle("Hyperspectral reflectance for a single pixel") +
+  ggtitle("Hyperspectral reflectance for a single pixel within polygon") +
           scale_color_manual(values = c("#1c9099")
   )
 
@@ -485,7 +485,7 @@ ggplot(data = spectra_tree,
            colour = taxonID)) +
   geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
   labs(x = "wavelength (nm)") + 
-  ggtitle("Hyperspectral reflectance for a single pixel") +
+  ggtitle("Hyperspectral reflectance for multiple pixels within tree polygon") +
           scale_color_manual(values = c("#1c9099")
   )
 ```
@@ -495,17 +495,24 @@ ggplot(data = spectra_tree,
 To visualize the variation of spectra per species, let's add shadded regions to capture the minimum and maximum reflectance per wavelength and see if there are any notable divergences between species. 
 
 ```{r eval = FALSE}
+
+# calculate mean reflectance per species
+mean_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)], 
+                                     by = list(taxonID = spectra_all$taxonID),
+                                     FUN = mean)
+
+
+
+
 # for each species, plot the mean reflectance curve with the variation
 # shaded around it.
 # shading could illustrate 95th confidence interval, min & max, ...
 
-
-
-ggplot(data = spectra_tree, 
+ggplot(data = mean_reflectance, 
        aes(x = wavelength, 
            y = reflectance, 
            colour = taxonID)) +
-  geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
+  geom_line(aes(group = taxonID), size = 0.3, alpha = 0.7) + 
   labs(x = "wavelength (nm)") + 
   ggtitle("Hyperspectral reflectance for a single pixel") +
           scale_color_manual(values = c("#1c9099")
