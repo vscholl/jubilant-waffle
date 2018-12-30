@@ -774,10 +774,21 @@ get_hs_band <- function(refl, wavelengths, wl, proj4, ext, plt=FALSE){
 # Stack_hyperspectral -----------------------------------------------------
 
 stack_hyperspectral <- function(h5){
-  # h5 - character string filename of HDF5 file 
+  # This function creates a rasterstack object for the specified HDF5 
+  # filename. 
   #
+  # Args: 
+  # h5
+  #   character string filename of HDF5 file 
   #
+  # Returns: 
+  # s
+  #   RasterStack (collection of Raster layers with the same spatial extent
+  #   and resolution) containing nrows x ncols x nbands, based on the 
+  #   resolution and number of bands in the HDF5 file. This RasterStack
+  #   can then be clipped using Spatial vector layers. 
   #
+  
   
   # list the contents of HDF5 file
   h5_struct <- rhdf5::h5ls(h5, all=T)
@@ -875,3 +886,52 @@ stack_hyperspectral <- function(h5){
   
 }
 
+
+
+# write_spectra_to_file ---------------------------------------------------
+
+write_spectra_to_file <- function(spectra, polygons_in, filename_out){
+  # this function takes a data frame ("spectra") with an ID column
+  # and subsequent columns for each wavelength ("X386").
+  # the reflectance spectra are combined with metadata (from "polygons_in" list),
+  # ID numbers are adjusted to 
+  
+  # create polygon metadata data frame 
+  polygon_metadata <- data.frame(individualID = polygons_in$indvdID,
+                                 scientificName = polygons_in$scntfcN,
+                                 taxonID = polygons_in$taxonID,
+                                 maxCrownDiameter = polygons_in$crownDm,
+                                 height = polygons_in$height,
+                                 X = polygons_in$X,
+                                 Y = polygons_in$Y,
+                                 # create ID column to pair the polygon metadata with spectra
+                                 ID =  1:nrow(polygons_in))
+  
+  # create a list of increasing integer counts to keep track of how many rows 
+  # (pixels or spectra) belong to each tree 
+  for (i in unique(spectra$ID)){
+    if(i==1){
+      counts = 1:sum(spectra$ID==i)
+    }
+    else{
+      counts = append(counts, 1:sum(spectra$ID==i))
+    }
+  }
+  
+  # combine the additional data with each spectrum for writing to file
+  spectra_write <- merge(polygon_metadata,
+                         spectra,
+                         by="ID") %>% 
+    mutate(spectra_count = counts)%>% 
+    select(ID, spectra_count, everything())
+  
+  # take a look at the first rows of the spectra data to write 
+  head(spectra_write[,1:10] %>% select(-c(scientificName,X,Y)))
+  
+  
+  # write the spectral data to file for future analysis 
+  write.csv(spectra_write, file = filename_out) 
+  
+  return(spectra_write)
+  
+}
