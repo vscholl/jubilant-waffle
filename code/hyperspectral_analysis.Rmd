@@ -35,6 +35,9 @@ library(tidyr)
 library(sf)
 library(dplyr)
 library(data.table) 
+library(knitr) # for nice table formatting
+library(kableExtra)
+library(RColorBrewer)
 
 # set working directory
 setwd("~/github/jubilant-waffle/code/")
@@ -61,6 +64,7 @@ shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
 
 # define the output directory. If it doesn't exist already, create it.
 check_create_dir('../output/') # create top level "output" directory
+check_create_dir(paste0('../output/', site_code, '/figures')) # folder for plots
 out_dir <- paste0('../output/', site_code, '/')
 check_create_dir(out_dir) # create output folder for site
 
@@ -393,11 +397,12 @@ spectra_all_bufferPolygons <- as.data.frame(read.csv(spectra_all_bufferPolygons_
 
 
 spectra_all <- spectra_all_points
+spectra_all_overlapPolygons <- spectra_all_overlapPolygons
 # filter the spectra to reduce the number of them for quick visualization 
 # figure out how to extract spectra for the center pixels most efficiently, make a 
 # function out of hyperspectral_analysis.R? 
-set.seed(12)
-spectra_all <- spectra_all[sample(nrow(spectra_all), size = 100),]
+#set.seed(12)
+#spectra_all <- spectra_all[sample(nrow(spectra_all), size = 100),]
 #spectra_all <- spectra_write # use the single tile spectra from above for quick viz 
 ```
 
@@ -407,7 +412,30 @@ spectra_all <- spectra_all[sample(nrow(spectra_all), size = 100),]
 
 ## Plot reflectance spectra
 
-Plot the reflectance spectra as a function of wavelength. First, let's see them all on a single graph, colored by species. 
+Plot the reflectance spectra as a function of wavelength. First, let's see them all on a single graph, colored by species.
+
+For reference, here is a table detailing the scientific names, common names, taxon ID values, and number of tree stems present in the data set for each of the four species present at the Niwot Ridge site: 
+
+```{r species_table, echo=FALSE, results=TRUE}
+library(knitr)
+library(kableExtra)
+species_table <- data.table("TaxonID" = c("ABLAL",
+                                           "PICOL",
+                                           "PIEN",
+                                           "PIFL2"),
+                            "Scientific name" = c("Abies lasiocarpa",
+                                                  "Pinus contorta",
+                                                  "Picea engelmannii",
+                                                  "Pinus flexilis"),
+                            "Common Name" = c("Subalpine fir",
+                                              "Lodgepole pine",
+                                              "Engelmann spruce",
+                                              "Limber pine"),
+                            "Number of stems" = as.data.frame(table(tree_points$taxonID))$Freq)
+
+knitr::kable(species_table) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
 
 ```{r plot_spectra}
 
@@ -493,12 +521,30 @@ ggplot(data = spectra_plot,
   scale_color_manual(values = c("#d7191c", "#fdae61", "#abdda4", "#2b83ba"))
 ```
 
+We can also plot all of the spectra for a single species in a single figure:
+
+```{r results=TRUE}
+# keep only the Engelmann spruce trees.
+# give each curve its own color to help visualize some of the different shapes
+ggplot(data = spectra_plot %>% filter(taxonID == "PIEN"), 
+       aes(x = wavelength, 
+           y = reflectance, 
+           colour = individualID)) +
+  geom_line(aes(group = individualID), size = 0.5, alpha = 0.5) + 
+  labs(x = "wavelength (nm)") + 
+  ggtitle("Hyperspectral reflectance curves, Engelmann Spruce") +
+  theme(legend.position="none") # remove legend 
+```
+
+
+
 To assess the difference between a single stem location and a collection of pixels within a tree crown polygon, let's plot a single reflectance spectrum compared to a series of them. 
 
 ```{r plot_compare_point_polygon}
 # all reflectance spectra for a tree polygon
+j <- 25 # select an individual tree 
 spectra_tree <- spectra_plot %>% 
-              filter(individualID==as.character(spectra_plot$individualID[1])) 
+              filter(individualID==as.character(unique(spectra_plot$individualID)[j])) 
 
 # single reflectance spectrum for a tree stem point
 spectrum_tree <- spectra_tree %>% 
@@ -509,29 +555,79 @@ ggplot(data = spectrum_tree,
        aes(x = wavelength, 
            y = reflectance, 
            colour = taxonID)) +
-  geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
+  geom_line(aes(group = individualID), size = 0.5, alpha = 1) + 
   labs(x = "wavelength (nm)") + 
-  ggtitle("Hyperspectral reflectance for a single pixel within polygon") +
+  ggtitle(paste0("Hyperspectral reflectance for a single pixel, tree ",
+                 as.character(unique(spectra_plot$individualID)[j]))) +
           scale_color_manual(values = c("#1c9099")
   )
 
+
+
+# for this plot, use the polygon spectra
+spectra_subset_overlapPolygons <- spectra_all_overlapPolygons %>% 
+  filter(individualID==as.character(unique(spectra_plot$individualID)[j]))
+
+spectra_1_overlapPolygons <- spectra_subset_overlapPolygons[1,] %>% 
+                dplyr::select(-c(X,Y,ID))
+
+spectra_plot_overlapPolygons <- tidyr::gather(spectra_1_overlapPolygons,
+                              key = wavelength,
+                              value = "reflectance",
+                              -individualID,
+                              -scientificName,
+                              -taxonID,
+                              -maxCrownDiameter,
+                              -height,
+                              -spectra_count)
+
+spectra_plot_overlapPolygons$wavelength <- wavelengths
+
+# loop through the remaining spectra and repeat 
+for (i in 2:nrow(spectra_subset_overlapPolygons)){
+  spectra_current <- spectra_subset_overlapPolygons[i,] %>% 
+                        dplyr::select(-c(X,Y,ID))
+  spectra_current <- tidyr::gather(spectra_current,
+                                key = wavelength,
+                                value = "reflectance",
+                                -individualID,
+                                -scientificName,
+                                -taxonID,
+                                -maxCrownDiameter,
+                                -height,
+                                -spectra_count)
+  spectra_current$wavelength <- wavelengths
+  
+  spectra_plot_overlapPolygons <- rbind(spectra_plot_overlapPolygons, 
+                                        spectra_current)
+  
+}
+
+# remove the first reflectance value 
+spectra_plot_overlapPolygons <- spectra_plot_overlapPolygons[spectra_plot_overlapPolygons$wavelength > 385,]
+
+# remove the bad bands 
+spectra_plot_overlapPolygons$reflectance[spectra_plot_overlapPolygons$wavelength %in% remove_bands] <- NA
+
+
 # plot containing multiple pixels within a tree polygon
-ggplot(data = spectra_tree, 
+ggplot(data = spectra_plot_overlapPolygons, 
        aes(x = wavelength, 
-           y = reflectance, 
-           colour = taxonID)) +
-  geom_line(aes(group = individualID), size = 0.3, alpha = 0.7) + 
-  labs(x = "wavelength (nm)") + 
-  ggtitle("Hyperspectral reflectance for multiple pixels within tree polygon") +
-          scale_color_manual(values = c("#1c9099")
-  )
+           y = reflectance,
+           colour = as.factor(spectra_count))) +
+  geom_line(aes(group = spectra_count), size = 0.5, alpha = 1) + 
+  labs(x = "wavelength (nm)", color = "spectra count") + 
+  ggtitle(paste0("Hyperspectral reflectance for multiple pixels intersecting with polygon, \n tree ",
+          as.character(unique(spectra_plot$individualID)[j]))) +
+  scale_color_manual(values = brewer.pal(length(unique(spectra_plot_overlapPolygons$spectra_count)),
+                                         "Set1"))
 ```
 
 
 
 To visualize the variation of spectra per species, let's add shadded regions to capture the minimum and maximum reflectance per wavelength and see if there are any notable divergences between species. 
 
-```{r eval = FALSE}
+```{r ribbon_plot, results=TRUE}
 
 # calculate mean reflectance per species
 mean_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)], 
@@ -547,7 +643,8 @@ max_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)],
 # create a LUT that matches actual wavelength values with the column names,
 # X followed by the rounded wavelength values. 
 wavelength_lut <- data.frame(wavelength = wavelengths,
-                             xwavelength = paste0("X",as.character(round(wavelengths))))
+                             xwavelength = paste0("X",as.character(round(wavelengths))),
+                             stringsAsFactors = FALSE)
 
 # use the gather function makes wide data longer:
 # https://uc-r.github.io/tidyr 
@@ -591,7 +688,7 @@ refl_tidy$min_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
 # specify the colors for the reflectance curves & shading around them 
 shading_colors <- c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
 species <- sort(unique(spectra_all$taxonID)) #alphabetical so colors match plot above
-shading_alpha <- 0.3
+shading_alpha <- 0.4
 
 # generate the ribbon plot
 ggplot(refl_tidy, 
@@ -652,6 +749,8 @@ ggplot(refl_tidy,
       # main plot title  
       ggtitle(paste0("Mean Hyperspectral reflectance per species \n",
                     "(shading shows minimum and maximum refl range per wavelength)")) 
+
+ggsave(paste0(out_dir,"/figures/","ribbon_plot.png"), width = 10, height = 6)
 
 ```
 

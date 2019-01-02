@@ -246,6 +246,145 @@ write.table(data.frame(wavelengths = wavelengths),
 
 
 
+# ribbon plots for different shapefiles ------------------------------------------
+
+shapefile_list <- c("stem_points",
+                   "polygons_checked_overlap_max_diameter",
+                   "buffer_max_diameter")
+
+for (out_description in shapefile_list){
+  print(paste0("creating ribbon plot for ", out_description))
+  
+  fname <- paste0(out_dir, site_code, 
+                        "_spectral_reflectance_ALL_", out_description, ".csv")
+  spectra_all <- as.data.frame(read.csv(fname)) %>%  select(-X.1)
+  
+  # calculate mean reflectance per species
+  mean_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)], 
+                                       by = list(taxonID = spectra_all$taxonID),
+                                       FUN = mean) 
+  min_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)], 
+                                      by = list(taxonID = spectra_all$taxonID),
+                                      FUN = min) 
+  max_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)], 
+                                      by = list(taxonID = spectra_all$taxonID),
+                                      FUN = max) 
+  
+  # create a LUT that matches actual wavelength values with the column names,
+  # X followed by the rounded wavelength values. 
+  wavelength_lut <- data.frame(wavelength = wavelengths,
+                               xwavelength = paste0("X",as.character(round(wavelengths))),
+                               stringsAsFactors = FALSE)
+  
+  # use the gather function makes wide data longer:
+  # https://uc-r.github.io/tidyr 
+  # so the reflectance data can easily be grouped by species, 
+  # and the mean/min/max reflectance values can be selected for a ribbon plot. 
+  mean_refl_tidy <- tidyr::gather(mean_reflectance,
+                                  key = xwavelength,
+                                  value = "mean_reflectance",
+                                  X381:X2510) %>%
+    dplyr::left_join(wavelength_lut, by="xwavelength") 
+  
+  # add on the min reflectance column with the same format 
+  max_refl_tidy <- tidyr::gather(max_reflectance,
+                                 key = xwavelength,
+                                 value = "max_reflectance",
+                                 X381:X2510)
+  
+  min_refl_tidy <- tidyr::gather(min_reflectance,
+                                 key = xwavelength,
+                                 value = "min_reflectance",
+                                 X381:X2510)
+  
+  # combine the mean, min, man reflectance data into one long data frame
+  refl_tidy <- merge.data.frame(mean_refl_tidy,
+                                max_refl_tidy) %>% 
+    merge.data.frame(min_refl_tidy) %>% 
+    select(-xwavelength) %>%          # remove the Xwavelength values 
+    select(wavelength, everything())  # reorder to wavelength column is first
+  
+  
+  
+  # remove the first reflectance value 
+  refl_tidy <- refl_tidy[refl_tidy$wavelength > 385,]
+  
+  # remove the bad bands 
+  refl_tidy$mean_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+  refl_tidy$max_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+  refl_tidy$min_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+  
+  
+  # specify the colors for the reflectance curves & shading around them 
+  shading_colors <- c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
+  species <- sort(unique(spectra_all$taxonID)) #alphabetical so colors match plot above
+  shading_alpha <- 0.4
+  
+  # generate the ribbon plot
+  ggplot(refl_tidy, 
+         aes(x = wavelength, y = mean_reflectance, color = taxonID)) + 
+    
+    # shaded ribbon from min to max for each species
+    # can't get the shading colors to match the lines
+    #geom_ribbon(aes(ymin = min_reflectance,
+    #                ymax = max_reflectance,
+    #                alpha = 0.1,
+    #                fill = taxonID)) + 
+    
+    # ABLAL
+    geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[1], ],
+                aes(ymin = min_reflectance, ymax = max_reflectance),
+                colour=NA,
+                alpha = shading_alpha,
+                fill = shading_colors[1],
+                show.legend = F) + 
+    
+    # PICOL
+    geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[2], ],
+                aes(ymin = min_reflectance, ymax = max_reflectance),
+                colour=NA,
+                alpha = shading_alpha,
+                fill = shading_colors[2],
+                show.legend = F) + 
+    
+    # PIEN
+    geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[3], ],
+                aes(ymin = min_reflectance, ymax = max_reflectance),
+                colour=NA,
+                alpha = shading_alpha,
+                fill = shading_colors[3],
+                show.legend = F) + 
+    
+    # PIFL2
+    geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[4], ],
+                aes(ymin = min_reflectance, ymax = max_reflectance),
+                colour=NA,
+                alpha = shading_alpha,
+                fill = shading_colors[4],
+                show.legend = F) + 
+    
+    
+    # mean reflectance line
+    # placing this after the ribbon shading so the mean curves are visible
+    geom_line(size = 0.5, alpha = 1) + 
+    
+    scale_color_manual(values = shading_colors) + 
+    
+    # hide the "alpha" legend
+    guides(alpha=FALSE) + 
+    
+    # label X and Y axes 
+    labs(x = "wavelength (nm)", y = "reflectance") + 
+    
+    # main plot title  
+    ggtitle(paste0("Mean Hyperspectral reflectance per species \n",
+                   "(shading shows minimum and maximum refl range per wavelength)")) 
+  
+  ggsave(paste0(out_dir,"/figures/","ribbon_plot_", out_description, ".png"), width = 10, height = 6)
+  
+}
+
+
 
 
 
