@@ -140,11 +140,11 @@ for (h5 in h5_list) {
                                                    df = TRUE)
   
   # 50% max crown diameter (buffer of (maxCrownDiameter / 4))
-  buffers_50percent <- tree_polygons_points$crownDm / 4
-  extracted_spectra_buffer_50percentDm <- raster::extract(s, 
-                                                   points_in_sp,
-                                                   buffer = buffers_50percent,
-                                                   df = TRUE)
+  #buffers_50percent <- tree_polygons_points$crownDm / 4
+  #extracted_spectra_buffer_50percentDm <- raster::extract(s, 
+  #                                                 points_in_sp,
+  #                                                 buffer = buffers_50percent,
+  #                                                 df = TRUE)
   # GETTING WEIRD ERROR: 
   #Error in (function (..., deparse.level = 1)  : 
   #number of columns of matrices must match (see arg 6)
@@ -189,7 +189,6 @@ for (h5 in h5_list) {
   
 }
   
-  
 
 
 
@@ -197,7 +196,16 @@ for (h5 in h5_list) {
 
 # get a list of the .csv file per tile containing woody veg stemse
 csvs <- list.files(out_dir, full.names = TRUE)
-csvs <- csvs[grepl("*000.csv", csvs)]
+
+# csvs <- csvs[grepl("*000.csv", csvs)] # from back when there was only one collection of csvs
+
+# specify a description that the different shapefile iterations are named by
+out_description <- "stem_points" # stem point locations 
+out_description <- "polygons_checked_overlap_max_diameter" # checked_overlap polygons
+out_description <- "buffer_max_diameter" # buffer of (maxCrownDiameter / 2)
+
+# refine the output csv selection 
+csvs <- csvs[grepl(paste0("*000_", out_description, ".csv"), csvs)]
 
 # combine all .csv data into a single data frame 
 for (i in 1:length(csvs)){
@@ -219,7 +227,8 @@ spectra_all <- spectra_all %>% dplyr::select(-X.1)
 
 # write ALL the spectra to a single file 
 write.csv(spectra_all,
-          file=paste0(out_dir, site_code, "_spectral_reflectance_ALL.csv"))
+          file=paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
+                      out_description,".csv"))
 
 # write the exact wavelengths to file for future use 
 write.table(data.frame(wavelengths = wavelengths),
