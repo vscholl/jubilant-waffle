@@ -762,6 +762,18 @@ R packages and resources to potentially utilize:
 
 * [manual calculation](https://stats.stackexchange.com/questions/78849/measure-for-separability)
 
+```{r}
+# install.packages("spatialEco")
+# library(spatialEco)
+x <- as.numeric(mean_reflectance[1,2:length(wavelengths)]) # first row, ABLAB
+y <- as.numeric(mean_reflectance[2,2:length(wavelengths)]) # second row, PICOL
+sep <- spatialEco::separability(x, y, plot = TRUE)
+  
+# calculate seperability between each pair of species 
+
+# visualize 
+
+```
 
 
 
