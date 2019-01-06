@@ -33,9 +33,12 @@ check_create_dir(out_dir) # create output folder for site
 bad_band_window_1 <- c(1340, 1445)
 bad_band_window_2 <- c(1790, 1955)
 
-# read tree polygons file 
+# read tree polygons file - circles are size of max crown diameter
 tree_polygons <- rgdal::readOGR(dsn = shapefile_dir,
                                 layer = "polygons_checked_overlap")
+
+# read in tree polygons file - circles have half size of crown diameter
+tree_polygons_halfDiam
 
 # read the tree stem locations file
 tree_points <- rgdal::readOGR(dsn = shapefile_dir,
@@ -152,6 +155,8 @@ for (h5 in h5_list) {
   # Try substituting this 50% buffer parameter instead with the polygons
   # created using neon_veg workflow with a 50% smaller diameter?????? 
   
+  # 50% max crown diameter (buffer of (maxCrownDiameter / 4))
+  extracted_polygon_halfDiam_spectra <- raster::extract(s, polygons_halfDiam_in_sp, df = TRUE)
   
   
   
@@ -377,7 +382,7 @@ for (out_description in shapefile_list){
     labs(x = "wavelength (nm)", y = "reflectance") + 
     
     # main plot title  
-    ggtitle(paste0("Mean Hyperspectral reflectance per species \n",
+    ggtitle(paste0("Mean Hyperspectral reflectance per species: ", out_description, " \n",
                    "(shading shows minimum and maximum refl range per wavelength)")) 
   
   ggsave(paste0(out_dir,"/figures/","ribbon_plot_", out_description, ".png"), width = 10, height = 6)
