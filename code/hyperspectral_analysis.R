@@ -283,9 +283,12 @@ write.table(data.frame(wavelengths = wavelengths),
 # ribbon plots for different shapefiles ------------------------------------------
 
 shapefile_list <- c("stem_points",
+                    "polygons_checked_overlap_50percent_diameter",
                    "polygons_checked_overlap_max_diameter",
-                   "buffer_max_diameter",
-                   "polygons_checked_overlap_50percent_diameter")
+                   "buffer_max_diameter")
+
+# absolute maximum reflectance to set the same ylimit for the plots
+y_max <- 0.35    #max(refl_tidy$max_reflectance, na.rm = TRUE)
 
 for (out_description in shapefile_list){
   print(paste0("creating ribbon plot for ", out_description))
@@ -295,6 +298,7 @@ for (out_description in shapefile_list){
   spectra_all <- as.data.frame(read.csv(fname)) %>%  select(-X.1)
   
   # calculate mean reflectance per species
+  # VS-NOTE: ADJUST THE COLUMN SELECTION to use names instead of indices (i.e. "10")
   mean_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)], 
                                        by = list(taxonID = spectra_all$taxonID),
                                        FUN = mean) 
@@ -304,6 +308,18 @@ for (out_description in shapefile_list){
   max_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)], 
                                       by = list(taxonID = spectra_all$taxonID),
                                       FUN = max) 
+  sd_reflectance <- stats::aggregate(spectra_all[,10:ncol(spectra_all)],
+                                         by = list(taxonID = spectra_all$taxonID),
+                                         FUN = sd)
+  
+  # add and subtract 1 standard deviation from the mean. Keep taxon ID column.
+  # mean_plus_sd <- cbind(taxonID = mean_reflectance$taxonID,
+  #                       (mean_reflectance[2:ncol(mean_reflectance)] + 
+  #                        sd_reflectance[2:ncol(mean_reflectance)]))
+  # 
+  # mean_minus_sd <- cbind(taxonID = mean_reflectance$taxonID,
+  #                        (mean_reflectance[2:ncol(mean_reflectance)] - 
+  #                        sd_reflectance[2:ncol(mean_reflectance)]))
   
   # create a LUT that matches actual wavelength values with the column names,
   # X followed by the rounded wavelength values. 
@@ -321,7 +337,7 @@ for (out_description in shapefile_list){
                                   X381:X2510) %>%
     dplyr::left_join(wavelength_lut, by="xwavelength") 
   
-  # add on the min reflectance column with the same format 
+  # add on the max, min reflectance columns with the same format 
   max_refl_tidy <- tidyr::gather(max_reflectance,
                                  key = xwavelength,
                                  value = "max_reflectance",
@@ -332,10 +348,16 @@ for (out_description in shapefile_list){
                                  value = "min_reflectance",
                                  X381:X2510)
   
+  sd_refl_tidy <- tidyr::gather(sd_reflectance,
+                                 key = xwavelength,
+                                 value = "sd_reflectance",
+                                 X381:X2510)
+  
   # combine the mean, min, man reflectance data into one long data frame
   refl_tidy <- merge.data.frame(mean_refl_tidy,
                                 max_refl_tidy) %>% 
     merge.data.frame(min_refl_tidy) %>% 
+    merge.data.frame(sd_refl_tidy) %>% 
     select(-xwavelength) %>%          # remove the Xwavelength values 
     select(wavelength, everything())  # reorder to wavelength column is first
   
@@ -348,9 +370,6 @@ for (out_description in shapefile_list){
   refl_tidy$mean_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
   refl_tidy$max_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
   refl_tidy$min_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
-  
-  # absolute maximum reflectance to set the same ylimit for the plots
-  y_max <- 0.5    #max(refl_tidy$max_reflectance, na.rm = TRUE)
   
   # specify the colors for the reflectance curves & shading around them 
   shading_colors <- c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
@@ -370,7 +389,11 @@ for (out_description in shapefile_list){
     
     # ABLAL
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[1], ],
-                aes(ymin = min_reflectance, ymax = max_reflectance),
+                #aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
+                #aes(ymin = mean_minus_sd[mean_minus_sd$taxonID == species[1], ], 
+                #    ymax = mean_plus_sd[mean_plus_sd$taxonID == species[1], ]), # std dev shading
+                aes(ymin = mean_reflectance - sd_reflectance,
+                    ymax = mean_reflectance + sd_reflectance), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
                 fill = shading_colors[1],
@@ -378,7 +401,9 @@ for (out_description in shapefile_list){
     
     # PICOL
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[2], ],
-                aes(ymin = min_reflectance, ymax = max_reflectance),
+                #aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
+                aes(ymin = mean_reflectance - sd_reflectance,
+                    ymax = mean_reflectance + sd_reflectance), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
                 fill = shading_colors[2],
@@ -386,7 +411,9 @@ for (out_description in shapefile_list){
     
     # PIEN
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[3], ],
-                aes(ymin = min_reflectance, ymax = max_reflectance),
+                # aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
+                aes(ymin = mean_reflectance - sd_reflectance,
+                    ymax = mean_reflectance + sd_reflectance), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
                 fill = shading_colors[3],
@@ -394,7 +421,9 @@ for (out_description in shapefile_list){
     
     # PIFL2
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[4], ],
-                aes(ymin = min_reflectance, ymax = max_reflectance),
+                # aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
+                aes(ymin = mean_reflectance - sd_reflectance,
+                    ymax = mean_reflectance + sd_reflectance), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
                 fill = shading_colors[4],
@@ -418,8 +447,10 @@ for (out_description in shapefile_list){
     
     # main plot title  
     ggtitle(paste0("Mean Hyperspectral reflectance per species: ", out_description, " \n",
-                   "(shading shows minimum and maximum refl range per wavelength)")) 
-  
+                   #"(shading shows minimum and maximum refl range per wavelength)")) # min max shading
+                   "(shading shows one standard deviation from mean refl range per wavelength)")) # std dev shading
+                   
+                   
   ggsave(paste0(out_dir,"/figures/","ribbon_plot_", out_description, ".png"), width = 10, height = 6)
   
 }
