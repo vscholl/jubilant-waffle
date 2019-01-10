@@ -37,12 +37,28 @@ bad_band_window_2 <- c(1790, 1955)
 tree_polygons <- rgdal::readOGR(dsn = shapefile_dir,
                                 layer = "polygons_checked_overlap")
 
-# read in tree polygons file - circles have half size of crown diameter
-tree_polygons_halfDiam
-
 # read the tree stem locations file
 tree_points <- rgdal::readOGR(dsn = shapefile_dir,
                               layer = "mapped_stems_final")
+
+# half max crown diameter (“50_percent” shape files) ----------------------
+
+# read in tree polygons file - circles have half size of crown diameter
+# note that there are a different number of final polygons / stems when the
+# diameter is changed. 
+tree_polygons <- rgdal::readOGR(dsn = shapefile_dir,
+                                         layer = "polygons_checked_overlap_50percent")
+
+
+tree_points <- rgdal::readOGR(dsn = shapefile_dir,
+                              layer = "mapped_stems_final_50percent")
+
+out_dir <- paste0('../output/', site_code, '/diam50percent/')
+check_create_dir(out_dir) # create output folder for site
+
+# ------------------------------------------------------------------------
+
+
 
 # convert polygons and tree locations to SF objects
 tree_polygons_sf <- sf::st_as_sf(tree_polygons)
@@ -136,11 +152,11 @@ for (h5 in h5_list) {
   # of the number of points. 
   
   # maxCrownDiameter (buffer of (maxCrownDiameter / 2))
-  buffers_mxDm <- tree_polygons_points$crownDm / 2
-  extracted_spectra_buffer_mxDm <- raster::extract(s, 
-                                                   points_in_sp,
-                                                   buffer = buffers_mxDm,
-                                                   df = TRUE)
+#  buffers_mxDm <- tree_polygons_points$crownDm / 2
+#  extracted_spectra_buffer_mxDm <- raster::extract(s, 
+#                                                   points_in_sp,
+#                                                   buffer = buffers_mxDm,
+#                                                   df = TRUE)
   
   # 50% max crown diameter (buffer of (maxCrownDiameter / 4))
   #buffers_50percent <- tree_polygons_points$crownDm / 4
@@ -156,41 +172,53 @@ for (h5 in h5_list) {
   # created using neon_veg workflow with a 50% smaller diameter?????? 
   
   # 50% max crown diameter (buffer of (maxCrownDiameter / 4))
-  extracted_polygon_halfDiam_spectra <- raster::extract(s, polygons_halfDiam_in_sp, df = TRUE)
+#  extracted_polygon_halfDiam_spectra <- raster::extract(s, polygons_halfDiam_in_sp, df = TRUE)
   
   
   
   ### write spectra to file 
   
-  # stem point locations 
-  write_spectra_to_file(spectra = extracted_point_spectra,
-                        polygons_in = polygons_in,
-                        filename_out = paste0(out_dir,
-                                              "spectral_reflectance_",
-                                              as.character(s@extent[1]),"_",
-                                              as.character(s@extent[3]),"_",
-                                              "stem_points",
-                                              ".csv"))
+    # stem point locations 
+  # write_spectra_to_file(spectra = extracted_point_spectra,
+  #                       polygons_in = polygons_in,
+  #                       filename_out = paste0(out_dir,
+  #                                             "spectral_reflectance_",
+  #                                             as.character(s@extent[1]),"_",
+  #                                             as.character(s@extent[3]),"_",
+  #                                             "stem_points",
+  #                                             ".csv"))
   
   # checked_overlap polygons generated using the neon_veg workflow 
+#  write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
+#                        polygons_in = polygons_in,
+#                        filename_out = paste0(out_dir,
+#                                              "spectral_reflectance_",
+#                                              as.character(s@extent[1]),"_",
+#                                              as.character(s@extent[3]),"_",
+#                                              "polygons_checked_overlap_max_diameter",
+#                                              ".csv"))
+  
+  # maxCrownDiameter (buffer of (maxCrownDiameter / 2))
+#  write_spectra_to_file(spectra = as.data.frame(extracted_spectra_buffer_mxDm),
+#                        polygons_in = polygons_in,
+#                        filename_out = paste0(out_dir,
+#                                              "spectral_reflectance_",
+#                                              as.character(s@extent[1]),"_",
+#                                              as.character(s@extent[3]),"_",
+#                                              "buffer_max_diameter",
+#                                              ".csv"))
+
+  # checked_overlap polygons generated using the neon_veg workflow,
+  # 50% maxCrownDiameter size. 
   write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
                         polygons_in = polygons_in,
                         filename_out = paste0(out_dir,
-                                              "spectral_reflectance_",
-                                              as.character(s@extent[1]),"_",
-                                              as.character(s@extent[3]),"_",
-                                              "polygons_checked_overlap_max_diameter",
-                                              ".csv"))
+                        "spectral_reflectance_",
+                        as.character(s@extent[1]),"_",
+                        as.character(s@extent[3]),"_",
+                        "polygons_checked_overlap_50percent_diameter",
+                        ".csv"))  
   
-  # maxCrownDiameter (buffer of (maxCrownDiameter / 2))
-  write_spectra_to_file(spectra = as.data.frame(extracted_spectra_buffer_mxDm),
-                        polygons_in = polygons_in,
-                        filename_out = paste0(out_dir,
-                                              "spectral_reflectance_",
-                                              as.character(s@extent[1]),"_",
-                                              as.character(s@extent[3]),"_",
-                                              "buffer_max_diameter",
-                                              ".csv"))
   
 }
   
@@ -208,6 +236,7 @@ csvs <- list.files(out_dir, full.names = TRUE)
 out_description <- "stem_points" # stem point locations 
 out_description <- "polygons_checked_overlap_max_diameter" # checked_overlap polygons
 out_description <- "buffer_max_diameter" # buffer of (maxCrownDiameter / 2)
+out_description <- "polygons_checked_overlap_50percent_diameter" # checked_overlap, 50% max crown diameter
 
 # refine the output csv selection 
 csvs <- csvs[grepl(paste0("*000_", out_description, ".csv"), csvs)]
@@ -255,7 +284,8 @@ write.table(data.frame(wavelengths = wavelengths),
 
 shapefile_list <- c("stem_points",
                    "polygons_checked_overlap_max_diameter",
-                   "buffer_max_diameter")
+                   "buffer_max_diameter",
+                   "polygons_checked_overlap_50percent_diameter")
 
 for (out_description in shapefile_list){
   print(paste0("creating ribbon plot for ", out_description))
@@ -319,6 +349,8 @@ for (out_description in shapefile_list){
   refl_tidy$max_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
   refl_tidy$min_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
   
+  # absolute maximum reflectance to set the same ylimit for the plots
+  y_max <- 0.5    #max(refl_tidy$max_reflectance, na.rm = TRUE)
   
   # specify the colors for the reflectance curves & shading around them 
   shading_colors <- c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
@@ -380,6 +412,9 @@ for (out_description in shapefile_list){
     
     # label X and Y axes 
     labs(x = "wavelength (nm)", y = "reflectance") + 
+    
+    # set the y axis range to be consistent between plots
+    ylim(0,y_max) + 
     
     # main plot title  
     ggtitle(paste0("Mean Hyperspectral reflectance per species: ", out_description, " \n",

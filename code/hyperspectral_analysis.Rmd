@@ -756,13 +756,20 @@ ggsave(paste0(out_dir,"/figures/","ribbon_plot.png"), width = 10, height = 6)
 
 ## Spectral seperability analysis
 
-R packages and resources to potentially utilize:
+The [separability](https://www.rdocumentation.org/packages/spatialEco/versions/1.1-0/topics/separability) function within the SpatialEco R package calculates a variety of two-class sample separability metrics:
 
-* [separability](https://www.rdocumentation.org/packages/spatialEco/versions/1.1-0/topics/separability) 
+* *B* Bhattacharryya distance statistic (Bhattacharyya 1943; Harold 2003) - Measures the similarity of two discrete or continuous probability distributions.
 
-* [manual calculation](https://stats.stackexchange.com/questions/78849/measure-for-separability)
+* *JM* Jeffries-Matusita distance statistic  (Bruzzone et al., 2005; Swain et al., 1971) - The J-M distance is a function of separability that directly relates to the probability of how good a resultant classification will be. 
 
-```{r}
+* *M* M-Statistic (Kaufman & Remer 1994) - This is a measure of the difference of the distributional peaks. A large M-statistic indicates good separation between the two classes as within-class variance is minimized and between-class variance maximized (M <1 poor, M >1 good).
+
+* *D* Divergence index and *TD* Transformed Divergence index (Du et al., 2004) - Maximum likelihood approach. Transformed divergence gives an exponentially decreasing weight to increasing distances between the classes.
+
+
+
+
+```{r results = TRUE}
 # install.packages("spatialEco")
 # library(spatialEco)
 x <- as.numeric(mean_reflectance[1,2:length(wavelengths)]) # first row, ABLAB
@@ -771,7 +778,7 @@ sep <- spatialEco::separability(x, y, plot = TRUE)
   
 # calculate seperability between each pair of species 
 
-# visualize 
+# visualize using heat map
 
 ```
 
