@@ -33,21 +33,24 @@ check_create_dir(out_dir) # create output folder for site
 bad_band_window_1 <- c(1340, 1445)
 bad_band_window_2 <- c(1790, 1955)
 
-# read tree polygons file - circles are size of max crown diameter
-tree_polygons <- rgdal::readOGR(dsn = shapefile_dir,
-                                layer = "polygons_checked_overlap")
+
 
 # read the tree stem locations file
 tree_points <- rgdal::readOGR(dsn = shapefile_dir,
                               layer = "mapped_stems_final")
 
-# half max crown diameter (“50_percent” shape files) ----------------------
-
-# read in tree polygons file - circles have half size of crown diameter
-# note that there are a different number of final polygons / stems when the
-# diameter is changed. 
+# read tree polygons file - circles with diameter = max crown diameter
 tree_polygons <- rgdal::readOGR(dsn = shapefile_dir,
-                                         layer = "polygons_checked_overlap_50percent")
+                                layer = "polygons_clipped_overlap")
+
+
+# 50% crown diameter ------------------------------------------------------
+
+# read tree polygons file - circles with diameter = half of max crown diameter.
+# note that there are a different number of final polygons / stems when the
+# diameter is changed; this is also a function of the area threshold. 
+tree_polygons <- rgdal::readOGR(dsn = shapefile_dir,
+                                         layer = "polygons_clipped_overlap_50percent")
 
 
 tree_points <- rgdal::readOGR(dsn = shapefile_dir,
@@ -111,8 +114,37 @@ for (h5 in h5_list) {
   
   print(h5)
   
-  # create a georeferenced rasterstack using the current hyperspectral tile
-  s <- stack_hyperspectral(h5)
+  # each current hyperspectral tile must be read and stacked into a 
+  # georeferenced rasterstack object (so it can be clipped with point / polygon
+  # shapefiles). The process of creating a rasterstack takes a while for 
+  # each tile, so after creating each rasterstack once, each object gets 
+  # written to a file. 
+  
+  # Build up the rasterstack filename by parsing out the easting/northing
+  # coordinates from the current h5 filename.
+  rasterstack_filename <- paste0(h5_dir, "rasterstack_",
+              str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5],"_",
+              str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6],".rds")
+  
+  print(paste("rasterstack filename: ", rasterstack_filename))
+  
+  # check to see if a .rds file already exists for the current tile.
+  if (file.exists(rasterstack_filename)){
+    
+    # if it exists, read that instead of re-generating the same rasterstack.
+    message("rasterstack was already created for current tile")
+    # restore / read the rasterstack from file
+    s <- readRDS(file = rasterstack_filename)
+    
+  } else{
+    
+    # if it doesn't exist, generate the rasterstack. 
+    message("creating rasterstack for current tile...")
+    # create a georeferenced rasterstack using the current hyperspectral tile
+    s <- stack_hyperspectral(h5)
+    # save the rasterstack to file 
+    saveRDS(s, file = rasterstack_filename)
+  }
   
   # figure out which trees are within the current tile by 
   polygons_in <- tree_polygons_points %>% 
@@ -144,7 +176,7 @@ for (h5 in h5_list) {
   # stem point locations 
   extracted_point_spectra <- raster::extract(s, points_in_sp, df = TRUE)
   
-  # checked_overlap polygons generated using the neon_veg workflow 
+  # clipped_overlap polygons generated using the neon_veg workflow 
   extracted_polygon_spectra <- raster::extract(s, polygons_in_sp, df = TRUE)
   
   # the buffer parameter can be used to include cells around each point of a
@@ -179,24 +211,24 @@ for (h5 in h5_list) {
   ### write spectra to file 
   
     # stem point locations 
-  # write_spectra_to_file(spectra = extracted_point_spectra,
-  #                       polygons_in = polygons_in,
-  #                       filename_out = paste0(out_dir,
-  #                                             "spectral_reflectance_",
-  #                                             as.character(s@extent[1]),"_",
-  #                                             as.character(s@extent[3]),"_",
-  #                                             "stem_points",
-  #                                             ".csv"))
+  write_spectra_to_file(spectra = extracted_point_spectra,
+                        polygons_in = polygons_in,
+                        filename_out = paste0(out_dir,
+                                              "spectral_reflectance_",
+                                              as.character(s@extent[1]),"_",
+                                              as.character(s@extent[3]),"_",
+                                              "stem_points",
+                                              ".csv"))
   
-  # checked_overlap polygons generated using the neon_veg workflow 
-#  write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
-#                        polygons_in = polygons_in,
-#                        filename_out = paste0(out_dir,
-#                                              "spectral_reflectance_",
-#                                              as.character(s@extent[1]),"_",
-#                                              as.character(s@extent[3]),"_",
-#                                              "polygons_checked_overlap_max_diameter",
-#                                              ".csv"))
+  # clipped_overlap polygons generated using the neon_veg workflow 
+ # write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
+ #                       polygons_in = polygons_in,
+ #                       filename_out = paste0(out_dir,
+ #                                             "spectral_reflectance_",
+ #                                             as.character(s@extent[1]),"_",
+ #                                             as.character(s@extent[3]),"_",
+ #                                             "polygons_clipped_overlap_max_diameter",
+ #                                             ".csv"))
   
   # maxCrownDiameter (buffer of (maxCrownDiameter / 2))
 #  write_spectra_to_file(spectra = as.data.frame(extracted_spectra_buffer_mxDm),
@@ -208,7 +240,7 @@ for (h5 in h5_list) {
 #                                              "buffer_max_diameter",
 #                                              ".csv"))
 
-  # checked_overlap polygons generated using the neon_veg workflow,
+  # clipped_overlap polygons generated using the neon_veg workflow,
   # 50% maxCrownDiameter size. 
   write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
                         polygons_in = polygons_in,
@@ -216,8 +248,8 @@ for (h5 in h5_list) {
                         "spectral_reflectance_",
                         as.character(s@extent[1]),"_",
                         as.character(s@extent[3]),"_",
-                        "polygons_checked_overlap_50percent_diameter",
-                        ".csv"))  
+                        "polygons_clipped_overlap",
+                        ".csv"))
   
   
 }
@@ -234,9 +266,11 @@ csvs <- list.files(out_dir, full.names = TRUE)
 
 # specify a description that the different shapefile iterations are named by
 out_description <- "stem_points" # stem point locations 
-out_description <- "polygons_checked_overlap_max_diameter" # checked_overlap polygons
-out_description <- "buffer_max_diameter" # buffer of (maxCrownDiameter / 2)
-out_description <- "polygons_checked_overlap_50percent_diameter" # checked_overlap, 50% max crown diameter
+out_description <- "polygons_clipped_overlap" # clipped_overlap polygons
+
+#out_description <- "polygons_checked_overlap_max_diameter" # checked_overlap polygons
+#out_description <- "buffer_max_diameter" # buffer of (maxCrownDiameter / 2)
+#out_description <- "polygons_checked_overlap_50percent_diameter" # checked_overlap, 50% max crown diameter
 
 # refine the output csv selection 
 csvs <- csvs[grepl(paste0("*000_", out_description, ".csv"), csvs)]
@@ -264,38 +298,81 @@ write.csv(spectra_all,
           file=paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
                       out_description,".csv"))
 
-# write the exact wavelengths to file for future use 
-write.table(data.frame(wavelengths = wavelengths),
-            paste(out_dir,"wavelengths.txt"),
-            sep="\n",
-            row.names=FALSE)
+## write the exact wavelengths to file for future use --> moved into stack_hyperspectral function
+#write.table(data.frame(wavelengths = wavelengths),
+#            paste0(out_dir,"wavelengths.txt"),
+#            sep="\n",
+#            row.names=FALSE)
 
 # read wavelengths if not previously created
-#wavelengths = read.table(paste(out.dir.spectra,"wavelengths.txt"),
+#wavelengths = read.table(paste0(out_dir,"wavelengths.txt"),
 #                         sep="\n",
 #                         skip = 1,
 #                         col.names = 'wavelength')
 
+# read wavelengths if not previously created
+wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
+                                           sep="\n",
+                                           skip = 1,
+                                           col.names = 'wavelength')))
 
 
 
 
 # ribbon plots for different shapefiles ------------------------------------------
 
-shapefile_list <- c("stem_points",
-                    "polygons_checked_overlap_50percent_diameter",
-                   "polygons_checked_overlap_max_diameter",
-                   "buffer_max_diameter")
+# instead put each set of spectra into its own folder
+# use folder name for graph titles
+shapefile_list <- c("stem_points_maxdiameter"
+                    ,"polygons_clipped_overlap_max_diameter"
+                    ,"polygons_clipped_overlap_50percent"
+                    )
 
 # absolute maximum reflectance to set the same ylimit for the plots
 y_max <- 0.35    #max(refl_tidy$max_reflectance, na.rm = TRUE)
 
+# remove the bad bands 
+remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
+                               wavelengths < bad_band_window_1[2]) | 
+                              (wavelengths > bad_band_window_2[1] & 
+                                 wavelengths < bad_band_window_2[2])]
+
+# figure out which individual ID's appear across both data sets
+# get ID's in max diameter set 
+spectra_maxDiameter <- as.data.frame(read.csv(
+  paste0(out_dir, "ribbon_plots_spectral_reflectance_ALL/",
+         site_code, "_spectral_reflectance_ALL_", "stem_points_maxdiameter", ".csv"))) 
+# get ID's in 50 percent max diameter set 
+spectra_50percent <- as.data.frame(read.csv(
+  paste0(out_dir, "ribbon_plots_spectral_reflectance_ALL/",
+         site_code, "_spectral_reflectance_ALL_", "stem_points_50percent", ".csv"))) 
+
+# get the ID's that are the same between the two data sets 
+stems_to_use <- intersect(as.character(spectra_maxDiameter$individualID), 
+                          as.character(spectra_50percent$individualID))
+
+# create empty data frame to contain the mean spectra for each 
+# species, for each shapefile data set 
+df_mean_spectra <- data.frame(shpfile = c("stem", "stem","stem","stem",
+"poly_maxDiameter","poly_maxDiameter","poly_maxDiameter","poly_maxDiameter",
+"poly_50percent","poly_50percent","poly_50percent","poly_50percent")
+                            species = c())
+
+
 for (out_description in shapefile_list){
   print(paste0("creating ribbon plot for ", out_description))
   
-  fname <- paste0(out_dir, site_code, 
-                        "_spectral_reflectance_ALL_", out_description, ".csv")
+  fname <- paste0(out_dir, "ribbon_plots_spectral_reflectance_ALL/",
+                  site_code, "_spectral_reflectance_ALL_", out_description, ".csv")
   spectra_all <- as.data.frame(read.csv(fname)) %>%  select(-X.1)
+  
+  
+  # filter down the spectra to utilize only the 
+  # trees that are present in both the max crown diameter data set 
+  spectra_all <- spectra_all %>% dplyr::filter(individualID %in% stems_to_use)
+  
+  print(paste("There are", as.character(length(unique(spectra_all$individualID))),
+               "unique spectra being plotted"))
   
   # calculate mean reflectance per species
   # VS-NOTE: ADJUST THE COLUMN SELECTION to use names instead of indices (i.e. "10")
@@ -455,6 +532,58 @@ for (out_description in shapefile_list){
   
 }
 
+species_table <- data.table("TaxonID" = c("ABLAL",
+                                          "PICOL",
+                                          "PIEN",
+                                          "PIFL2"),
+                            "Scientific name" = c("Abies lasiocarpa",
+                                                  "Pinus contorta",
+                                                  "Picea engelmannii",
+                                                  "Pinus flexilis"),
+                            "Common Name" = c("Subalpine fir",
+                                              "Lodgepole pine",
+                                              "Engelmann spruce",
+                                              "Limber pine"),
+                            "Number of individual trees" = as.data.frame(table(spectra_all$taxonID))$Freq)
+
+
+knitr::kable(species_table) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Spectral seperability  --------------------------------------------------
+
+# The [separability](https://www.rdocumentation.org/packages/spatialEco/versions/1.1-0/topics/separability) 
+# function within the SpatialEco R package calculates a variety of two-class 
+# sample separability metrics:
+  
+#  * *B* Bhattacharryya distance statistic (Bhattacharyya 1943; Harold 2003) - 
+#        Measures the similarity of two discrete or continuous probability distributions.
+#   * *JM* Jeffries-Matusita distance statistic (Bruzzone et al., 2005; Swain et al., 1971) - 
+#          The J-M distance is a function of separability that directly relates to the 
+#          probability of how good a resultant classification will be. 
+#   * *M* M-Statistic (Kaufman & Remer 1994) - This is a measure of the difference of 
+#          the distributional peaks. A large M-statistic indicates good separation 
+#          between the two classes as within-class variance is minimized and 
+#          between-class variance maximized (M <1 poor, M >1 good).
+#   * *D* Divergence index and *TD* Transformed Divergence index (Du et al., 2004) - 
+#         Maximum likelihood approach. Transformed divergence gives an exponentially 
+#         decreasing weight to increasing distances between the classes.
+
+# install.packages("spatialEco")
+library(spatialEco)
+x <- as.numeric(mean_reflectance[1,2:length(wavelengths)]) # first row, ABLAB
+y <- as.numeric(mean_reflectance[2,2:length(wavelengths)]) # second row, PICOL
+sep <- spatialEco::separability(x, y, plot = TRUE)
+print(sep)
+
+# calculate seperability between each pair of species, for each polygon size 
+
+
+# create a list of all 
+
+
+
+# visualize using heat map https://www.r-graph-gallery.com/heatmap/ 
+
 
 
 
@@ -492,7 +621,7 @@ plotRGB(h5_rgb,
 
 # write cropped RGB RasterBrick to a tif
 writeRaster(h5_rgb,
-            paste0(out_dir,"myStack.tif"), 
+            paste0(out_dir,"rgb_composite_452000_4432000.tif"), 
             format="GTiff",
             overwrite=TRUE)
 
