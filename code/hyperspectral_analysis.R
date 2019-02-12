@@ -623,10 +623,32 @@ for(c in 1:ncol(taxon_pairs)){
 
 # visualize using heat map https://www.r-graph-gallery.com/heatmap/ 
 
-heatmap(seperability_metrics)
 
 
 
+
+
+
+# Read high-res RGB data --------------------------------------------------
+tile_easting_northing <- "453000_4433000"
+
+rgb_filename <- paste0("../data/NIWO/rgb/2017_NIWO_1_",
+                       tile_easting_northing,
+                       "_image.tif")
+rgb_img <- raster(rgb_filename)
+print(paste("ncols of high-res rgb data: ", as.character(rgb_img@ncols)))
+print(paste("nrows of high-res rgb data: ", as.character(rgb_img@nrows)))
+
+
+# Read CHM data 
+chm_filename <- paste0("../data/NIWO/chm/NEON_D13_NIWO_DP3_",
+                       tile_easting_northing,
+                       "_CHM.tif")
+chm <- raster(chm_filename)
+print(paste("ncols of chm data: ", as.character(chm@ncols)))
+print(paste("nrows of chm data: ", as.character(chm@nrows)))
+
+hist(chm)
 
 
 # Testing: crop HS data using single polygon ------------------------------
