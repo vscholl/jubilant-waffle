@@ -627,8 +627,6 @@ for(c in 1:ncol(taxon_pairs)){
 
 
 
-
-
 # Read high-res RGB data --------------------------------------------------
 tile_easting_northing <- "453000_4433000"
 
@@ -648,7 +646,7 @@ chm <- raster(chm_filename)
 print(paste("ncols of chm data: ", as.character(chm@ncols)))
 print(paste("nrows of chm data: ", as.character(chm@nrows)))
 
-hist(chm)
+hist(chm, breaks=round(chm@data@max))
 
 
 # Testing: crop HS data using single polygon ------------------------------
@@ -686,4 +684,197 @@ writeRaster(h5_rgb,
             paste0(out_dir,"rgb_composite_452000_4432000.tif"), 
             format="GTiff",
             overwrite=TRUE)
+
+
+
+# Random Forest Classification --------------------------------------------
+# This part of the script might eventually replace the part of the script above,
+# so that's why there is a lot of repeated code. 
+
+# set the seed for consistent random generation 
+set.seed(14)
+
+# set working directory
+setwd("~/github/jubilant-waffle/code/")
+
+# load any local functions in external files 
+source("supporting_functions.R")
+
+# code for NEON site 
+site_code <- 'NIWO'
+
+
+# input shapefile scenarios to test 
+
+# directory with shapefiles (tree stem locations and crown polygons)
+shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
+
+# define the layer name for each of the shapefile scenarios. 
+
+# all stem points at NIWO
+# "/shapefiles_maxDiameter/mapped_stems_with_crown_diameter.shp"
+allStems_layer <- "all_mapped_stems_with_crown_diameter"
+
+# polygons with max diameter, one generated for each stem point at NIWO
+# "shapefiles_maxDiameter/polygons_all.shp"
+allPolygons_maxDiameter_layer <- "all_polygons_max_diameter"
+
+# polygons with half max diameter, one generated for each stem point at NIWO
+# "shapefiles_halfDiameter/polygons_all.shp" 
+allPolygons_halfDiameter_layer <- "all_polygons_half_diameter"
+
+# neon_veg workflow polygons generated with max diameter 
+# "shapefiles_maxDiameter/polygons_clipped_overlap.shp"
+neonvegPolygons_maxDiameter_layer <- "neon-veg_polygons_max_diameter"
+
+# neon_veg workflow polygons generated with half the max diameter diameter 
+# "shapefiles_50percentDiameter/polygons_clipped_overlap.shp"
+neonvegPolygons_halfDiameter_layer <- "neon-veg_polygons_half_diameter"
+
+
+
+# clip all remote sensing data layers using each of the input shapefile scenarios to test.
+
+# hyperspectral imagery directory with .h5 files
+# and also .rds rasterstacks, generated earlier to speed up the testing 
+h5_dir <- paste0('../data/', site_code, '/hyperspectral/')
+# CHM geotiff directory 
+chm_dir <- paste0('../data/', site_code, '/chm/')
+# slope geotiff  directory 
+slope_dir <- paste0('../data/', site_code, '/slope/')
+# aspect geotiff directory 
+aspect_dir <- paste0('../data/', site_code, '/aspect/')
+
+# define the output directory. If it doesn't exist already, create it.
+check_create_dir('../output/') # create top level "output" directory
+out_dir <- paste0('../output/', site_code, '/')
+check_create_dir(out_dir) # create output folder for site
+
+
+# read in each of the shapefile layers 
+allStems <- rgdal::readOGR(dsn = shapefile_dir,
+                           layer = allStems_layer)
+
+allPolygons_maxDiameter <- rgdal::readOGR(dsn = shapefile_dir,
+                                          layer = allPolygons_maxDiameter_layer)
+
+allPolygons_halfDiameter <- rgdal::readOGR(dsn = shapefile_dir,
+                                           layer = allPolygons_halfDiameter_layer)
+
+neonvegPolygons_maxDiameter <- rgdal::readOGR(dsn = shapefile_dir,
+                                              layer = neonvegPolygons_maxDiameter_layer)
+
+neonvegPolygons_halfDiameter <- rgdal::readOGR(dsn = shapefile_dir,
+                                               layer = neonvegPolygons_halfDiameter_layer)
+
+
+
+
+
+# I could instead write a loop that loops through the layer names.
+# reads each layer, clips the giant stack of data for each tile. 
+shapefileLayerNames <- c("all_mapped_stems_with_crown_diameter",
+                         "all_polygons_max_diameter",
+                         "all_polygons_half_diameter",
+                         "neon-veg_polygons_max_diameter",
+                         "neon-veg_polygons_half_diameter")
+
+
+
+# make the following into a function to extract training features for each of the shapefiles 
+
+shapefileLayer <- allStems_layer
+shapefileLayer <- allPolygons_maxDiameter_layer
+
+# read the shapefile layer 
+shp <- rgdal::readOGR(dsn = shapefile_dir,
+                      layer = shapefileLayer)
+
+# convert to SF object
+shp_sf <- sf::st_as_sf(shp)
+
+# add columns for the center location of each tree 
+shp_coords <- shp_sf %>% 
+  sf::st_centroid() %>%  # get the centroids first for polygon geometries 
+  sf::st_coordinates() %>% 
+  as.data.frame()
+
+# add new columns for the tree location coordinates 
+shp_sf$X <- shp_coords$X
+shp_sf$Y <- shp_coords$Y
+
+
+# hyperspectral data - list the .h5 files 
+h5_list <- list.files(path = h5_dir, full.names = TRUE)
+h5_list <- h5_list[grepl("*.h5", h5_list)]
+
+# loop through h5 files 
+for (h5 in h5_list) {
+  
+  # print current hyperspectral filename 
+  print(h5)
+  
+  # each current hyperspectral tile must be read and stacked into a 
+  # georeferenced rasterstack object (so it can be clipped with point / polygon
+  # shapefiles). The process of creating a rasterstack takes a while for 
+  # each tile, so after creating each rasterstack once, each object gets 
+  # written to a file. 
+  
+  # Build up the rasterstack filename by parsing out the easting/northing
+  # coordinates from the current h5 filename.
+  rasterstack_filename <- paste0(h5_dir, "rasterstack_",
+                                 str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5],"_",
+                                 str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6],".rds")
+  
+  print(paste("rasterstack filename: ", rasterstack_filename))
+  
+  # check to see if a .rds file already exists for the current tile.
+  if (file.exists(rasterstack_filename)){
+    
+    # if it exists, read that instead of re-generating the same rasterstack.
+    message("rasterstack was already created for current tile")
+    # restore / read the rasterstack from file
+    s <- readRDS(file = rasterstack_filename)
+    
+  } else{
+    
+    # if it doesn't exist, generate the rasterstack. 
+    message("creating rasterstack for current tile...")
+    # create a georeferenced rasterstack using the current hyperspectral tile
+    s <- stack_hyperspectral(h5)
+    # save the rasterstack to file 
+    saveRDS(s, file = rasterstack_filename)
+  }
+  
+  # figure out which trees are within the current tile by 
+  polygons_in <- shp %>% 
+    dplyr::filter(xmin >= extent(s)[1] & 
+                    xmax < extent(s)[2] & 
+                    ymin >= extent(s)[3] & 
+                    ymax < extent(s)[4])
+  
+  print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
+  
+  
+  
+}
+
+
+
+# create a list of all the directories within "../data/" to use
+# for extracting features 
+dataDirectories <- c("hyperspectral",
+                            "chm",
+                            "slope",
+                            "aspect")
+
+# read all remote sensing data products and combine them into a giant stack 
+
+# add a layer with pixel ID's 
+
+# clip using the current shapefile, write these features to file 
+
+
+
+
 
