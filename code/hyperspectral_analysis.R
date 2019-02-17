@@ -901,13 +901,26 @@ for (h5 in h5_list) {
   #names(rgb) <- c("red","green","blue")
   
   # create one more layer to stack - this one keeps track of individual pixel ID's
-  # to avoid duplicate spectra being extracted. 
-  pixelID_layer <- 
+  # to avoid duplicate spectra being extracted. Basically, assign an integer ID
+  # to each pixel in the 1000x1000 raster. This raster needs to have the same 
+  # dimensions, extent, crs as the other layers so they can be stacked together. 
+  
+  # create a vector of IDs from 1 to the number of pixels in one band (#rows x #cols)
+  pixelID <- 1:(nrow(s) * ncol(s))
+  
+  # reshape this 1D vector into a 2D matrix 
+  dim(pixelID) <- c(nrow(s),ncol(s))
+  
+  # create a raster layer of pixel numbers 
+  pixelNumbers <- raster::raster(pixelID, crs = crs(s))
+  extent(pixelNumbers) <- extent(s)
+  names(pixelNumbers) <- "pixelNumber"
   
   
   # now, all of the hyperspectral data files have been read in for the current
-  # tile. add each one to the hyperspectral data stack. 
-  stacked_aop_data <- raster::addLayer(s, chm, slope, aspect)
+  # tile. add each one to the hyperspectral data stack along with the 
+  # layer to keep track pixel number within the tile. 
+  stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, pixelNumbers)
   
   
   
@@ -928,7 +941,7 @@ for (h5 in h5_list) {
   }
   
   # convert from SF obect to Spatial object for clipping
-  trees_in_sp <- sf::as_Spatial(trees_in$geometry,
+  trees_in_sp <- sf::as_Spatial(trees_in,
                                 IDs = as.character(trees_in$indvdID))
   
   # clip the hyperspectral raster stack with the polygons within current tile.
@@ -941,35 +954,35 @@ for (h5 in h5_list) {
                                        trees_in_sp, 
                                        df = TRUE)
   
+  # if the same pixel is extracted more than once (this can happen when polygon
+  # boundaries are touching or very close to one another), based on multiple
+  # occurrences of a single "pixelNumber" in the extracted_spectra,
+  # check the height of the tree. Let the taller tree keep the pixel.
+  # remove the extracted data for this pixel for the lower tree.
+  # ARG THIS MEANS THE NEON_VEG CODE NEEDS TO BE ADJUSTED 
+  # TO WRITE HEIGHT TO THE STEM POINTS SHAPEFILE 
+  # another idea for now is to use the CHM value for height comparison 
+  
 
   #write extracted spectra and other remote sensing data values to file 
-  write_spectra_to_file(spectra = extracted_point_spectra,
-                        polygons_in = polygons_in,
+  write_spectra_to_file(spectra = extracted_spectra,
+                        trees_in = trees_in,
                         filename_out = paste0(out_dir,
-                                              "spectral_reflectance_",
-                                              as.character(s@extent[1]),"_",
-                                              as.character(s@extent[3]),"_",
-                                              "stem_points",
-                                              ".csv"))
+                                              "extracted_features_",
+                                              east_north_string, "_",
+                                              shapefileLayer, ".csv"))
   
 }
 
 
 
-# create a list of all the directories within "../data/" to use
-# for extracting features 
-dataDirectories <- c("hyperspectral",
-                            "chm",
-                            "slope",
-                            "aspect")
+# Remove any spectra that have a height == 0
 
-# read all remote sensing data products and combine them into a giant stack 
+# remove bad bands if this is not done already
 
-# add a layer with pixel ID's 
+# make the ribbon plots, calculate separability metrics (not priority today)
 
-# clip using the current shapefile, write these features to file 
-
-
+# Get the random forest set up 
 
 
 
