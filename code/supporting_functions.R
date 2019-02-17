@@ -916,16 +916,19 @@ write_spectra_to_file <- function(spectra, trees_in, filename_out){
   # these values are combined with metadata (from the shapefiles list). 
   
   # create tree metadata data frame 
-  tree_metadata <- data.frame(individualID = trees_in$indvdID,
-                              scientificName = trees_in$scntfcN,
-                              taxonID = trees_in$taxonID,
-                              #maxCrownDiameter = trees_in$crownDm,
-                              #height = trees_in$height,
-                              X = trees_in$X,
-                              Y = trees_in$Y,
-                              # create ID column to pair the tree metadata with 
-                              # extracted spectra data 
-                              ID =  1:nrow(trees_in))
+  # tree_metadata <- data.frame(individualID = trees_in$indvdID,
+  #                             scientificName = trees_in$scntfcN,
+  #                             taxonID = trees_in$taxonID,
+  #                             maxCrownDiameter = trees_in$mxCrwnD,
+  #                             height = trees_in$height,
+  #                             X = trees_in$X,
+  #                             Y = trees_in$Y,
+  #                             # create ID column to pair the tree metadata with 
+  #                             # extracted spectra data 
+  #                             ID =  1:nrow(trees_in))
+  
+  tree_metadata <- data.frame(trees_in) %>% 
+    mutate(ID = 1:nrow(trees_in))
   
   # create a list of increasing integer counts to keep track of how many rows 
   # (pixels or spectra) belong to each tree 
@@ -943,7 +946,7 @@ write_spectra_to_file <- function(spectra, trees_in, filename_out){
                          spectra,
                          by="ID") %>% 
     mutate(spectra_count = counts)%>% 
-    select(ID, spectra_count, everything())
+    select(ID, spectra_count, pixelNumber, everything())
   
   # take a look at the first rows of the spectra data to write 
   #head(spectra_write)
@@ -957,189 +960,189 @@ write_spectra_to_file <- function(spectra, trees_in, filename_out){
 }
 
 
-# generateTrainingSet -----------------------------------------------------
 
-generateTrainingData <- function(shapefileLayer){
+# createRibbonPlot --------------------------------------------------------
+
+
+createRibbonPlot <- function(wavelengths, reflFilename){
   
-  # read the shapefile layer 
-  shp <- rgdal::readOGR(dsn = shapefile_dir,
-                        layer = shapefileLayer)
-    
-  # convert to SF object
-  shp_sf <- sf::st_as_sf(shp)
-  
-  # isolate the center coordinates of the trees 
-  shp_coords <- shp_sf %>% 
-    sf::st_coordinates() %>% 
-    as.data.frame()
-  
-  # add new columns for the tree location coordinates 
-  shp_sf$X <- tree_coords$X
-  shp_sf$Y <- tree_coords$Y
-  
-  # add empty columns for the min and max coordinates for each polygon
-  shp_sf$xmin <- NA 
-  shp_sf$xmax <- NA 
-  shp_sf$ymin <- NA 
-  shp_sf$ymax <- NA 
+  # define the "bad bands" wavelength ranges in nanometers, where atmospheric 
+  # absorption creates unreliable reflectance values. 
+  bad_band_window_1 <- c(1340, 1445)
+  bad_band_window_2 <- c(1790, 1955)
+
+  taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
   
   
   
+  # absolute maximum reflectance to set the same ylimit for the plots
+  y_max <- 0.35    #max(refl_tidy$max_reflectance, na.rm = TRUE)
+  
+  # remove the bad bands 
+  remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
+                                 wavelengths < bad_band_window_1[2]) | 
+                                (wavelengths > bad_band_window_2[1] & 
+                                   wavelengths < bad_band_window_2[2])]
+  
+  # remove columns that contain "X" in their name but are not reflectance values 
+  df <- as.data.frame(read.csv(reflFilename)) %>% select(-c(X.1,X,Y)) %>% 
+    filter(taxonID %in% taxonList)
+  # filter the columns to only keep those with spectral reflectance
+  spectra_all <- df %>% select( colnames(spectra)[ grepl( "X", names(spectra))] ) 
+  
+  # sanity check - check the number of unique entries in the spectra set 
+  print(paste("There are", as.character(length(unique(df$indvdID))),
+              "unique individual IDs for the spectra being plotted"))
+  
+  print(paste("There are", as.character(length(unique(df$pixelNumber))),
+              "unique pixelNumbers for the spectra being plotted"))
+  
+  # calculate mean reflectance per species
+  mean_reflectance <- stats::aggregate(spectra_all, 
+                                       by = list(taxonID = df$taxonID),
+                                       FUN = mean) 
+  min_reflectance <- stats::aggregate(spectra_all, 
+                                      by = list(taxonID = df$taxonID),
+                                      FUN = min) 
+  max_reflectance <- stats::aggregate(spectra_all, 
+                                      by = list(taxonID = df$taxonID),
+                                      FUN = max) 
+  sd_reflectance <- stats::aggregate(spectra_all,
+                                     by = list(taxonID = df$taxonID),
+                                     FUN = sd)
+  
+  # create a LUT that matches actual wavelength values with the column names,
+  # X followed by the rounded wavelength values. 
+  wavelength_lut <- data.frame(wavelength = wavelengths,
+                               xwavelength = paste0("X",as.character(round(wavelengths))),
+                               stringsAsFactors = FALSE)
+  
+  # use the gather function makes wide data longer:
+  # https://uc-r.github.io/tidyr 
+  # so the reflectance data can easily be grouped by species, 
+  # and the mean/min/max reflectance values can be selected for a ribbon plot. 
+  mean_refl_tidy <- tidyr::gather(mean_reflectance,
+                                  key = xwavelength,
+                                  value = "mean_reflectance",
+                                  X381:X2510) %>%
+    dplyr::left_join(wavelength_lut, by="xwavelength") 
+  
+  # add on the max, min reflectance columns with the same format 
+  max_refl_tidy <- tidyr::gather(max_reflectance,
+                                 key = xwavelength,
+                                 value = "max_reflectance",
+                                 X381:X2510)
+  
+  min_refl_tidy <- tidyr::gather(min_reflectance,
+                                 key = xwavelength,
+                                 value = "min_reflectance",
+                                 X381:X2510)
+  
+  sd_refl_tidy <- tidyr::gather(sd_reflectance,
+                                key = xwavelength,
+                                value = "sd_reflectance",
+                                X381:X2510)
+  
+  # combine the mean, min, man reflectance data into one long data frame
+  refl_tidy <- merge.data.frame(mean_refl_tidy,
+                                max_refl_tidy) %>% 
+    merge.data.frame(min_refl_tidy) %>% 
+    merge.data.frame(sd_refl_tidy) %>% 
+    select(-xwavelength) %>%          # remove the Xwavelength values 
+    select(wavelength, everything())  # reorder to wavelength column is first
   
   
-  # loop through h5 files 
+  # remove the first reflectance value 
+  refl_tidy <- refl_tidy[refl_tidy$wavelength > 385,]
   
-  # get the names of all HDF5 files to iterate through
-  h5_list <- list.files(path = h5_dir, full.names = TRUE)
-  h5_list <- h5_list[grepl("*.h5", h5_list)]
+  # remove the bad bands 
+  refl_tidy$mean_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+  refl_tidy$max_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+  refl_tidy$min_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
   
-  # loop through h5 files 
-  for (h5 in h5_list) {
-    
-    print(h5)
-    
-    # each current hyperspectral tile must be read and stacked into a 
-    # georeferenced rasterstack object (so it can be clipped with point / polygon
-    # shapefiles). The process of creating a rasterstack takes a while for 
-    # each tile, so after creating each rasterstack once, each object gets 
-    # written to a file. 
-    
-    # Build up the rasterstack filename by parsing out the easting/northing
-    # coordinates from the current h5 filename.
-    rasterstack_filename <- paste0(h5_dir, "rasterstack_",
-                                   str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5],"_",
-                                   str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6],".rds")
-    
-    print(paste("rasterstack filename: ", rasterstack_filename))
-    
-    # check to see if a .rds file already exists for the current tile.
-    if (file.exists(rasterstack_filename)){
-      
-      # if it exists, read that instead of re-generating the same rasterstack.
-      message("rasterstack was already created for current tile")
-      # restore / read the rasterstack from file
-      s <- readRDS(file = rasterstack_filename)
-      
-    } else{
-      
-      # if it doesn't exist, generate the rasterstack. 
-      message("creating rasterstack for current tile...")
-      # create a georeferenced rasterstack using the current hyperspectral tile
-      s <- stack_hyperspectral(h5)
-      # save the rasterstack to file 
-      saveRDS(s, file = rasterstack_filename)
-    }
-    
-    # figure out which trees are within the current tile by 
-    polygons_in <- tree_polygons_points %>% 
-      dplyr::filter(xmin >= extent(s)[1] & 
-                      xmax < extent(s)[2] & 
-                      ymin >= extent(s)[3] & 
-                      ymax < extent(s)[4])
-    
-    print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
-    
-    # if no polygons are within the current tile, skip to the next one
-    if (nrow(polygons_in)==0){
-      print("no trees located within current tile... skipping to next tile")
-      next
-    }
-    
-    # convert from SF obect to SpatialPolygons object for clipping
-    polygons_in_sp <- sf::as_Spatial(polygons_in$geometry.polygon,
-                                     IDs = as.character(polygons_in$indvdID))
-    points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
-                                   IDs = as.character(polygons_in$indvdID))
-    
-    ### clip the hyperspectral raster stack with the polygons within current tile.
-    # the returned objects are data frames, each row corresponds to a pixel in the
-    # hyperspectral imagery. The ID number refers to which polygon or point that 
-    # the pixel belongs to. A large polygon will lead to many extracted pixels
-    # (many rows in the output data frame)
-    
-    # stem point locations 
-    extracted_point_spectra <- raster::extract(s, points_in_sp, df = TRUE)
-    
-    # clipped_overlap polygons generated using the neon_veg workflow 
-    extracted_polygon_spectra <- raster::extract(s, polygons_in_sp, df = TRUE)
-    
-    # the buffer parameter can be used to include cells around each point of a
-    # given size. the buffer parameter can be specified as a vector of the length
-    # of the number of points. 
-    
-    # maxCrownDiameter (buffer of (maxCrownDiameter / 2))
-    #  buffers_mxDm <- tree_polygons_points$crownDm / 2
-    #  extracted_spectra_buffer_mxDm <- raster::extract(s, 
-    #                                                   points_in_sp,
-    #                                                   buffer = buffers_mxDm,
-    #                                                   df = TRUE)
-    
-    # 50% max crown diameter (buffer of (maxCrownDiameter / 4))
-    #buffers_50percent <- tree_polygons_points$crownDm / 4
-    #extracted_spectra_buffer_50percentDm <- raster::extract(s, 
-    #                                                 points_in_sp,
-    #                                                 buffer = buffers_50percent,
-    #                                                 df = TRUE)
-    # GETTING WEIRD ERROR: 
-    #Error in (function (..., deparse.level = 1)  : 
-    #number of columns of matrices must match (see arg 6)
-    
-    # Try substituting this 50% buffer parameter instead with the polygons
-    # created using neon_veg workflow with a 50% smaller diameter?????? 
-    
-    # 50% max crown diameter (buffer of (maxCrownDiameter / 4))
-    #  extracted_polygon_halfDiam_spectra <- raster::extract(s, polygons_halfDiam_in_sp, df = TRUE)
-    
-    
-    
-    ### write spectra to file 
-    
-    # stem point locations 
-    write_spectra_to_file(spectra = extracted_point_spectra,
-                          polygons_in = polygons_in,
-                          filename_out = paste0(out_dir,
-                                                "spectral_reflectance_",
-                                                as.character(s@extent[1]),"_",
-                                                as.character(s@extent[3]),"_",
-                                                "stem_points",
-                                                ".csv"))
-    
-    # clipped_overlap polygons generated using the neon_veg workflow 
-    # write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
-    #                       polygons_in = polygons_in,
-    #                       filename_out = paste0(out_dir,
-    #                                             "spectral_reflectance_",
-    #                                             as.character(s@extent[1]),"_",
-    #                                             as.character(s@extent[3]),"_",
-    #                                             "polygons_clipped_overlap_max_diameter",
-    #                                             ".csv"))
-    
-    # maxCrownDiameter (buffer of (maxCrownDiameter / 2))
-    #  write_spectra_to_file(spectra = as.data.frame(extracted_spectra_buffer_mxDm),
-    #                        polygons_in = polygons_in,
-    #                        filename_out = paste0(out_dir,
-    #                                              "spectral_reflectance_",
-    #                                              as.character(s@extent[1]),"_",
-    #                                              as.character(s@extent[3]),"_",
-    #                                              "buffer_max_diameter",
-    #                                              ".csv"))
-    
-    # clipped_overlap polygons generated using the neon_veg workflow,
-    # 50% maxCrownDiameter size. 
-    write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
-                          polygons_in = polygons_in,
-                          filename_out = paste0(out_dir,
-                                                "spectral_reflectance_",
-                                                as.character(s@extent[1]),"_",
-                                                as.character(s@extent[3]),"_",
-                                                "polygons_clipped_overlap",
-                                                ".csv"))
-    
-    
-  }
+  # specify the colors for the reflectance curves & shading around them 
+  shading_colors <- c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
+  species <- sort(unique(df$taxonID)) #alphabetical so colors match plot above
+  shading_alpha <- 0.4
   
+  # generate the ribbon plot
+  ggplot(refl_tidy, 
+         aes(x = wavelength, y = mean_reflectance, color = taxonID)) + 
+    
+    # shaded ribbon from min to max for each species
+    # can't get the shading colors to match the lines
+    #geom_ribbon(aes(ymin = min_reflectance,
+    #                ymax = max_reflectance,
+    #                alpha = 0.1,
+    #                fill = taxonID)) + 
+    
+    # ABLAL
+    geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[1], ],
+                #aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
+                #aes(ymin = mean_minus_sd[mean_minus_sd$taxonID == species[1], ], 
+                #    ymax = mean_plus_sd[mean_plus_sd$taxonID == species[1], ]), # std dev shading
+                aes(ymin = mean_reflectance - sd_reflectance,
+                    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                colour=NA,
+                alpha = shading_alpha,
+                fill = shading_colors[1],
+                show.legend = F) + 
+    
+    # PICOL
+    geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[2], ],
+                #aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
+                aes(ymin = mean_reflectance - sd_reflectance,
+                    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                colour=NA,
+                alpha = shading_alpha,
+                fill = shading_colors[2],
+                show.legend = F) + 
+    
+    # PIEN
+    geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[3], ],
+                # aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
+                aes(ymin = mean_reflectance - sd_reflectance,
+                    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                colour=NA,
+                alpha = shading_alpha,
+                fill = shading_colors[3],
+                show.legend = F) + 
+    
+    # PIFL2
+    geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[4], ],
+                # aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
+                aes(ymin = mean_reflectance - sd_reflectance,
+                    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                colour=NA,
+                alpha = shading_alpha,
+                fill = shading_colors[4],
+                show.legend = F) + 
+    
+    
+    # mean reflectance line
+    # placing this after the ribbon shading so the mean curves are visible
+    geom_line(size = 0.5, alpha = 1) + 
+    
+    scale_color_manual(values = shading_colors) + 
+    
+    # hide the "alpha" legend
+    guides(alpha=FALSE) + 
+    
+    # label X and Y axes 
+    labs(x = "wavelength (nm)", y = "reflectance") + 
+    
+    # set the y axis range to be consistent between plots
+    ylim(0,y_max) + 
+    
+    # main plot title  
+    ggtitle(paste0("Mean Hyperspectral reflectance per species: ", reflFilename, " \n",
+                   #"(shading shows minimum and maximum refl range per wavelength)")) # min max shading
+                   "(shading shows one standard deviation from mean refl range per wavelength)")) # std dev shading
   
+    # write plot to file 
+    ggsave(paste0(out_dir,"/figures/","ribbon_plot_", 
+                  tools::file_path_sans_ext(basename(reflFilename)), ".png"), 
+           width = 10, height = 6)
+
   
 }
-
-
