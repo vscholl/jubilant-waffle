@@ -727,23 +727,24 @@ allPolygons_halfDiameter_layer <- "all_polygons_half_diameter"
 # "shapefiles_maxDiameter/polygons_clipped_overlap.shp"
 neonvegPolygons_maxDiameter_layer <- "neon-veg_polygons_max_diameter"
 
-# neon_veg workflow polygons generated with half the max diameter diameter 
+# neon_veg workflow polygons generated with half the max diameter  
 # "shapefiles_50percentDiameter/polygons_clipped_overlap.shp"
 neonvegPolygons_halfDiameter_layer <- "neon-veg_polygons_half_diameter"
 
+# neon_veg workflow stems, corresponding to polygons generated with max diameter
+# "shapefiles_maxDiameter/mapped_stems_final.shp"
+neonvegStems_maxDiameter_layer <- "neon-veg_stems_max_diameter"
 
 
 # clip all remote sensing data layers using each of the input shapefile scenarios to test.
 
-# hyperspectral imagery directory with .h5 files
-# and also .rds rasterstacks, generated earlier to speed up the testing 
-h5_dir <- paste0('../data/', site_code, '/hyperspectral/')
-# CHM geotiff directory 
-chm_dir <- paste0('../data/', site_code, '/chm/')
-# slope geotiff  directory 
-slope_dir <- paste0('../data/', site_code, '/slope/')
-# aspect geotiff directory 
-aspect_dir <- paste0('../data/', site_code, '/aspect/')
+# specify the paths to each data directory
+h5_dir <- paste0('../data/', site_code, '/hyperspectral/') # hyperspectral .h5 and .rds
+chm_dir <- paste0('../data/', site_code, '/chm/')       # CHM geotiffs 
+slope_dir <- paste0('../data/', site_code, '/slope/')   # slope geotiffs
+aspect_dir <- paste0('../data/', site_code, '/aspect/') # aspect geotiffs
+rgb_dir <- paste0('../data/', site_code, '/rgb/')       # rgb image geotiffs
+
 
 # define the output directory. If it doesn't exist already, create it.
 check_create_dir('../output/') # create top level "output" directory
@@ -767,6 +768,9 @@ neonvegPolygons_maxDiameter <- rgdal::readOGR(dsn = shapefile_dir,
 neonvegPolygons_halfDiameter <- rgdal::readOGR(dsn = shapefile_dir,
                                                layer = neonvegPolygons_halfDiameter_layer)
 
+neonvegStems_maxDiameter <- rgdal::readOGR(dsn = shapefile_dir,
+                                           layer = neonvegStems_maxDiameter_layer)
+
 
 
 
@@ -785,6 +789,7 @@ shapefileLayerNames <- c("all_mapped_stems_with_crown_diameter",
 
 shapefileLayer <- allStems_layer
 shapefileLayer <- allPolygons_maxDiameter_layer
+shapefileLayer <- neonvegStems_maxDiameter_layer
 
 # read the shapefile layer 
 shp <- rgdal::readOGR(dsn = shapefile_dir,
@@ -808,7 +813,25 @@ shp_sf$Y <- shp_coords$Y
 h5_list <- list.files(path = h5_dir, full.names = TRUE)
 h5_list <- h5_list[grepl("*.h5", h5_list)]
 
-# loop through h5 files 
+# list the CHM files 
+chm_list <- list.files(path = chm_dir, full.names = TRUE)
+chm_list <- chm_list[grepl("*CHM.tif$", chm_list)]
+
+# list the slope files
+slope_list <- list.files(path = slope_dir, full.names = TRUE)
+slope_list <- slope_list[grepl("*slope.tif$", slope_list)]
+
+# list the aspect files 
+aspect_list <- list.files(path = aspect_dir, full.names = TRUE)
+aspect_list <- aspect_list[grepl("*aspect.tif$", aspect_list)]
+
+# list the RGB files 
+rgb_list <- list.files(path = rgb_dir, full.names = TRUE)
+rgb_list<- rgb_list[grepl("*image.tif$", rgb_list)]
+
+
+
+# loop through the tiles
 for (h5 in h5_list) {
   
   # print current hyperspectral filename 
@@ -822,9 +845,17 @@ for (h5 in h5_list) {
   
   # Build up the rasterstack filename by parsing out the easting/northing
   # coordinates from the current h5 filename.
+  
+  # parse the UTM easting and northing values from the current h5 filename
+  easting <- str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5]
+  northing <- str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6]
+  # combine them with an underscore; use this to find corresponding tiles 
+  # of various remote sensing data
+  east_north_string <- paste0(easting,"_",northing)
+  
+  # Build up the h5 rasterstack filename
   rasterstack_filename <- paste0(h5_dir, "rasterstack_",
-                                 str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5],"_",
-                                 str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6],".rds")
+                                 east_north_string, ".rds")
   
   print(paste("rasterstack filename: ", rasterstack_filename))
   
@@ -846,16 +877,80 @@ for (h5 in h5_list) {
     saveRDS(s, file = rasterstack_filename)
   }
   
-  # figure out which trees are within the current tile by 
-  polygons_in <- shp %>% 
-    dplyr::filter(xmin >= extent(s)[1] & 
-                    xmax < extent(s)[2] & 
-                    ymin >= extent(s)[3] & 
-                    ymax < extent(s)[4])
+  # read the corresponding remote sensing data for current tile
+  chm <- raster(grep(east_north_string, chm_list, value=TRUE))
+  slope <- raster(grep(east_north_string, slope_list, value=TRUE))
+  aspect <- raster(grep(east_north_string, aspect_list, value=TRUE))
   
-  print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
+  # set the raster name for each layer to be simply the name of the data 
+  # (i.e. "aspect") as opposed to the full filename 
+  # (i.e. ""NEON_D13_NIWO_DP3_452000_4431000_aspect")
+  names(chm) <- "chm"
+  names(slope) <- "slope"
+  names(aspect) <- "aspect"
   
   
+  
+  # need to figure out which metrics to compute (using which band(s) for the 
+  # RGB data, then re-grid it to have the same spatial resolution as the other 
+  # layers before adding it to the stack. 
+  # The RGB data is 10,000x10,000 pixels. 
+  # All other layers are 1,000x1,000 pixels.
+  #rgb <- stack(grep(east_north_string, rgb_list, value=TRUE)) 
+  # are the bands in R,G,B order? if so, rename accordingly: 
+  #names(rgb) <- c("red","green","blue")
+  
+  # create one more layer to stack - this one keeps track of individual pixel ID's
+  # to avoid duplicate spectra being extracted. 
+  pixelID_layer <- 
+  
+  
+  # now, all of the hyperspectral data files have been read in for the current
+  # tile. add each one to the hyperspectral data stack. 
+  stacked_aop_data <- raster::addLayer(s, chm, slope, aspect)
+  
+  
+  
+  # figure out which trees are within the current tile by comparing each
+  # X,Y coordinate to the extent of the current tile 
+  trees_in <- shp_sf %>% 
+    dplyr::filter(X >= extent(s)[1] & 
+                  X < extent(s)[2] & 
+                  Y >= extent(s)[3] & 
+                  Y  < extent(s)[4])
+  
+  print(paste0(as.character(nrow(trees_in))," trees in current tile"))
+  
+  # if no polygons are within the current tile, skip to the next one
+  if (nrow(trees_in)==0){
+    print("no trees located within current tile... skipping to next tile")
+    next
+  }
+  
+  # convert from SF obect to Spatial object for clipping
+  trees_in_sp <- sf::as_Spatial(trees_in$geometry,
+                                IDs = as.character(trees_in$indvdID))
+  
+  # clip the hyperspectral raster stack with the polygons within current tile.
+  # the returned objects are data frames, each row corresponds to a pixel in the
+  # hyperspectral imagery. The ID number refers to which tree that the 
+  # the pixel belongs to. A large polygon will lead to many extracted pixels
+  # (many rows in the output data frame), whereas tree stem points will
+  # lead to a single extracted pixel per tree. 
+  extracted_spectra <- raster::extract(stacked_aop_data, 
+                                       trees_in_sp, 
+                                       df = TRUE)
+  
+
+  #write extracted spectra and other remote sensing data values to file 
+  write_spectra_to_file(spectra = extracted_point_spectra,
+                        polygons_in = polygons_in,
+                        filename_out = paste0(out_dir,
+                                              "spectral_reflectance_",
+                                              as.character(s@extent[1]),"_",
+                                              as.character(s@extent[3]),"_",
+                                              "stem_points",
+                                              ".csv"))
   
 }
 
