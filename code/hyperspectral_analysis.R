@@ -703,39 +703,6 @@ source("supporting_functions.R")
 # code for NEON site 
 site_code <- 'NIWO'
 
-
-# input shapefile scenarios to test 
-
-# directory with shapefiles (tree stem locations and crown polygons)
-shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
-
-# define the layer name for each of the shapefile scenarios. 
-
-# all stem points at NIWO
-# "/shapefiles_maxDiameter/mapped_stems_with_crown_diameter.shp"
-allStems_layer <- "all_mapped_stems_with_crown_diameter"
-
-# polygons with max diameter, one generated for each stem point at NIWO
-# "shapefiles_maxDiameter/polygons_all.shp"
-allPolygons_maxDiameter_layer <- "all_polygons_max_diameter"
-
-# polygons with half max diameter, one generated for each stem point at NIWO
-# "shapefiles_halfDiameter/polygons_all.shp" 
-allPolygons_halfDiameter_layer <- "all_polygons_half_diameter"
-
-# neon_veg workflow polygons generated with max diameter 
-# "shapefiles_maxDiameter/polygons_clipped_overlap.shp"
-neonvegPolygons_maxDiameter_layer <- "neon-veg_polygons_max_diameter"
-
-# neon_veg workflow polygons generated with half the max diameter  
-# "shapefiles_50percentDiameter/polygons_clipped_overlap.shp"
-neonvegPolygons_halfDiameter_layer <- "neon-veg_polygons_half_diameter"
-
-# neon_veg workflow stems, corresponding to polygons generated with max diameter
-# "shapefiles_maxDiameter/mapped_stems_final.shp"
-neonvegStems_maxDiameter_layer <- "neon-veg_stems_max_diameter"
-
-
 # clip all remote sensing data layers using each of the input shapefile scenarios to test.
 
 # specify the paths to each data directory
@@ -745,6 +712,23 @@ slope_dir <- paste0('../data/', site_code, '/slope/')   # slope geotiffs
 aspect_dir <- paste0('../data/', site_code, '/aspect/') # aspect geotiffs
 rgb_dir <- paste0('../data/', site_code, '/rgb/')       # rgb image geotiffs
 
+# hyperspectral data - list the .h5 files 
+h5_list <- list.files(path = h5_dir, full.names = TRUE)
+h5_list <- h5_list[grepl("*.h5", h5_list)]
+# list the CHM files 
+chm_list <- list.files(path = chm_dir, full.names = TRUE)
+chm_list <- chm_list[grepl("*CHM.tif$", chm_list)]
+# list the slope files
+slope_list <- list.files(path = slope_dir, full.names = TRUE)
+slope_list <- slope_list[grepl("*slope.tif$", slope_list)]
+# list the aspect files 
+aspect_list <- list.files(path = aspect_dir, full.names = TRUE)
+aspect_list <- aspect_list[grepl("*aspect.tif$", aspect_list)]
+# list the RGB files 
+rgb_list <- list.files(path = rgb_dir, full.names = TRUE)
+rgb_list<- rgb_list[grepl("*image.tif$", rgb_list)]
+# TO DO: add the spectral indices one day if possible 
+
 
 # define the output directory. If it doesn't exist already, create it.
 check_create_dir('../output/') # create top level "output" directory
@@ -752,48 +736,71 @@ out_dir <- paste0('../output/', site_code, '/')
 check_create_dir(out_dir) # create output folder for site
 
 
-# read in each of the shapefile layers 
-allStems <- rgdal::readOGR(dsn = shapefile_dir,
-                           layer = allStems_layer)
+# input shapefile scenarios to test 
 
-allPolygons_maxDiameter <- rgdal::readOGR(dsn = shapefile_dir,
-                                          layer = allPolygons_maxDiameter_layer)
-
-allPolygons_halfDiameter <- rgdal::readOGR(dsn = shapefile_dir,
-                                           layer = allPolygons_halfDiameter_layer)
-
-neonvegPolygons_maxDiameter <- rgdal::readOGR(dsn = shapefile_dir,
-                                              layer = neonvegPolygons_maxDiameter_layer)
-
-neonvegPolygons_halfDiameter <- rgdal::readOGR(dsn = shapefile_dir,
-                                               layer = neonvegPolygons_halfDiameter_layer)
-
-neonvegStems_maxDiameter <- rgdal::readOGR(dsn = shapefile_dir,
-                                           layer = neonvegStems_maxDiameter_layer)
+# directory with shapefiles (tree stem locations and crown polygons)
+shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
 
 
+# define the subdirectory (destination or dsn when reading shapefile)
+# and the layer name (the filename before the .shp extension) 
+# in a vector for each of the shapefile scenarios. 
+
+# all stem points at NIWO
+allStems_layer <- c("allStems",
+                    "shapefiles_maxDiameter/",
+                    "mapped_stems_with_crown_diameter")
+
+# polygons with max diameter, one generated for each stem point at NIWO
+allPolygons_maxDiameter_layer <- c("allPolygons_maxDiameter",
+                                   "shapefiles_maxDiameter/",
+                                   "polygons_all")
+
+# polygons with half max diameter, one generated for each stem point at NIWO
+allPolygons_halfDiameter_layer <- c("allPolygons_halfDiameter",
+                                    "shapefiles_halfDiameter/",
+                                    "polygons_all")
+
+# neon_veg workflow polygons generated with max diameter 
+neonvegPolygons_maxDiameter_layer <- c("neonvegPolygons_maxDiameter",
+                                       "shapefiles_maxDiameter/",
+                                       "polygons_clipped_overlap")
+
+# neon_veg workflow polygons generated with half the max diameter  
+neonvegPolygons_halfDiameter_layer <- c("neonvegPolygons_halfDiameter",
+                                        "shapefiles_halfDiameter/",
+                                        "polygons_clipped_overlap")
+
+# neon_veg workflow stems, corresponding to polygons generated with max diameter
+neonvegStems_maxDiameter_layer <- c("neonvegStems_maxDiameter",
+                                    "shapefiles_maxDiameter/",
+                                    "mapped_stems_final")
+
+# create a data frame containing the description, directory, and shapefile name
+# for each of the shapefile scenarios to be tested 
+shapefileLayerNames <- as.data.frame(rbind(allStems_layer,
+                                        allPolygons_maxDiameter_layer,
+                                        allPolygons_halfDiameter_layer,
+                                        neonvegPolygons_maxDiameter_layer,
+                                        neonvegPolygons_halfDiameter_layer,
+                                        neonvegStems_maxDiameter_layer),
+                                     stringsAsFactors = FALSE) %>% 
+          #tibble::rownames_to_column() %>% 
+          `colnames<-`(c("description", "dsn", "layer")) 
+rownames(shapefileLayerNames) <- 1:nrow(shapefileLayerNames)
 
 
+# This loops through the specified shapefile layer names,
+# reads each layer, clips the giant stack of data for each tile,
+# and finally saves the extracted data to a CSV file for each tile. 
 
-# I could instead write a loop that loops through the layer names.
-# reads each layer, clips the giant stack of data for each tile. 
-shapefileLayerNames <- c("all_mapped_stems_with_crown_diameter",
-                         "all_polygons_max_diameter",
-                         "all_polygons_half_diameter",
-                         "neon-veg_polygons_max_diameter",
-                         "neon-veg_polygons_half_diameter")
-
-
-
-# make the following into a function to extract training features for each of the shapefiles 
-
-shapefileLayer <- allStems_layer
-shapefileLayer <- allPolygons_maxDiameter_layer
-shapefileLayer <- neonvegStems_maxDiameter_layer
+for(i in nrow(shapefileLayerNames)){ 
+print(paste0("Currently extracting features for tree points / polygons in:  ", 
+             shapefileLayerNames$description[i],".shp"))
 
 # read the shapefile layer 
-shp <- rgdal::readOGR(dsn = shapefile_dir,
-                      layer = shapefileLayer)
+shp <- rgdal::readOGR(dsn = paste0(shapefile_dir,shapefileLayerNames$dsn[i]),
+                      layer = shapefileLayerNames$layer[i])
 
 # convert to SF object
 shp_sf <- sf::st_as_sf(shp)
@@ -807,29 +814,6 @@ shp_coords <- shp_sf %>%
 # add new columns for the tree location coordinates 
 shp_sf$X <- shp_coords$X
 shp_sf$Y <- shp_coords$Y
-
-
-# hyperspectral data - list the .h5 files 
-h5_list <- list.files(path = h5_dir, full.names = TRUE)
-h5_list <- h5_list[grepl("*.h5", h5_list)]
-
-# list the CHM files 
-chm_list <- list.files(path = chm_dir, full.names = TRUE)
-chm_list <- chm_list[grepl("*CHM.tif$", chm_list)]
-
-# list the slope files
-slope_list <- list.files(path = slope_dir, full.names = TRUE)
-slope_list <- slope_list[grepl("*slope.tif$", slope_list)]
-
-# list the aspect files 
-aspect_list <- list.files(path = aspect_dir, full.names = TRUE)
-aspect_list <- aspect_list[grepl("*aspect.tif$", aspect_list)]
-
-# list the RGB files 
-rgb_list <- list.files(path = rgb_dir, full.names = TRUE)
-rgb_list<- rgb_list[grepl("*image.tif$", rgb_list)]
-
-
 
 # loop through the tiles
 for (h5 in h5_list) {
@@ -878,6 +862,7 @@ for (h5 in h5_list) {
   }
   
   # read the corresponding remote sensing data for current tile
+  print("Adding CHM, slope, aspect, pixelNumber to the hyperspectral data cube...")
   chm <- raster(grep(east_north_string, chm_list, value=TRUE))
   slope <- raster(grep(east_north_string, slope_list, value=TRUE))
   aspect <- raster(grep(east_north_string, aspect_list, value=TRUE))
@@ -921,6 +906,7 @@ for (h5 in h5_list) {
   # tile. add each one to the hyperspectral data stack along with the 
   # layer to keep track pixel number within the tile. 
   stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, pixelNumbers)
+
   
   
   
@@ -950,18 +936,32 @@ for (h5 in h5_list) {
   # the pixel belongs to. A large polygon will lead to many extracted pixels
   # (many rows in the output data frame), whereas tree stem points will
   # lead to a single extracted pixel per tree. 
+  print("Extracting features for each tree from the data cube... ")
   extracted_spectra <- raster::extract(stacked_aop_data, 
                                        trees_in_sp, 
                                        df = TRUE)
   
-  # if the same pixel is extracted more than once (this can happen when polygon
-  # boundaries are touching or very close to one another), based on multiple
-  # occurrences of a single "pixelNumber" in the extracted_spectra,
-  # check the height of the tree. Let the taller tree keep the pixel.
-  # remove the extracted data for this pixel for the lower tree.
-  # ARG THIS MEANS THE NEON_VEG CODE NEEDS TO BE ADJUSTED 
-  # TO WRITE HEIGHT TO THE STEM POINTS SHAPEFILE 
-  # another idea for now is to use the CHM value for height comparison 
+  # TO DO: 
+  # try adjusting this extract step to only get pixels WITHIN each tree polygon,
+  # also try calculating the percentage that each pixel is within a polygon
+  # and keep only pixels with > 50% overlap 
+  
+  # see if there is a unique pixelNumber for each row in the extracted spectra df
+  if( length(unique(extracted_spectra$pixelNumber)) == nrow(extracted_spectra )) {
+    print("There is one unique pixel ID for each extracted spectrum")
+  } else{
+    print("There are multiple extracted spectra with the same pixel ID")
+    
+    # TO DO: 
+    # if the same pixel is extracted more than once (this can happen when polygon
+    # boundaries are touching or very close to one another), based on multiple
+    # occurrences of a single "pixelNumber" in the extracted_spectra,
+    # check the height of the tree. Let the taller tree keep the pixel.
+    # remove the extracted data for this pixel for the lower tree.
+    # ARG THIS MEANS THE NEON_VEG CODE NEEDS TO BE ADJUSTED 
+    # TO WRITE HEIGHT TO THE STEM POINTS SHAPEFILE 
+    
+  }
   
 
   #write extracted spectra and other remote sensing data values to file 
@@ -972,6 +972,8 @@ for (h5 in h5_list) {
                                               east_north_string, "_",
                                               shapefileLayer, ".csv"))
   
+}
+
 }
 
 
