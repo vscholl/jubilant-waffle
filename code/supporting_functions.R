@@ -533,8 +533,15 @@ df_to_shp_points = function(df, coord_ref, shp_filename){
   message("\nCreating points based on mapped stem locations...")
   
   # select columns of interest
-  stem_locations <- df %>%
-    dplyr::select(easting, northing, individualID, scientificName, taxonID)
+  if("height" %in% colnames(df)){
+    stem_locations <- df %>%
+      dplyr::select(easting, northing, individualID, scientificName, taxonID, height,maxCrownDiameter)
+    
+  } else{
+    stem_locations <- df %>%
+      dplyr::select(easting, northing, individualID, scientificName, taxonID)
+    
+  }
   
   # assign UTM coordinates to create SpatialPointsDataFrame
   coordinates(stem_locations) <- ~easting+northing
@@ -773,13 +780,16 @@ get_hs_band <- function(refl, wavelengths, wl, proj4, ext, plt=FALSE){
 
 # Stack_hyperspectral -----------------------------------------------------
 
-stack_hyperspectral <- function(h5){
+stack_hyperspectral <- function(h5, out_dir){
   # This function creates a rasterstack object for the specified HDF5 
   # filename. 
   #
   # Args: 
   # h5
   #   character string filename of HDF5 file 
+  # out_dir
+  #   directory for output files where the wavelengths will be written to
+  #   a text file for further analysis
   #
   # Returns: 
   # s
@@ -881,6 +891,13 @@ stack_hyperspectral <- function(h5){
   # adjust the names for each layer in raster stack to correspond to wavelength
   names(s) <- round(wavelengths)
   
+  # write wavelengths to a text file 
+  # write the exact wavelengths to file for future use 
+  write.table(data.frame(wavelengths = wavelengths),
+              paste0(out_dir,"wavelengths.txt"),
+              sep="\n",
+              row.names=FALSE)
+  
   # return the stacked hyperspectral data to clip with vector files 
   return(s)
   
@@ -890,22 +907,25 @@ stack_hyperspectral <- function(h5){
 
 # write_spectra_to_file ---------------------------------------------------
 
-write_spectra_to_file <- function(spectra, polygons_in, filename_out){
-  # this function takes a data frame ("spectra") with an ID column
-  # and subsequent columns for each wavelength ("X386").
-  # the reflectance spectra are combined with metadata (from "polygons_in" list),
-  # ID numbers are adjusted to 
+write_spectra_to_file <- function(spectra, trees_in, filename_out){
+  # this function takes a data frame containing extracted data.
+  # column names include ID (this refers to the individual plant ID),
+  # columns for each wavelength of hyperspectral reflectance ("X381","X386", 
+  # ... "X2505"), as well as chm (height), slope, aspect, and pixelNumber 
+  # (unique integer for every pixel in the 1km x 1km raster). 
+  # these values are combined with metadata (from the shapefiles list). 
   
-  # create polygon metadata data frame 
-  polygon_metadata <- data.frame(individualID = polygons_in$indvdID,
-                                 scientificName = polygons_in$scntfcN,
-                                 taxonID = polygons_in$taxonID,
-                                 maxCrownDiameter = polygons_in$crownDm,
-                                 height = polygons_in$height,
-                                 X = polygons_in$X,
-                                 Y = polygons_in$Y,
-                                 # create ID column to pair the polygon metadata with spectra
-                                 ID =  1:nrow(polygons_in))
+  # create tree metadata data frame 
+  tree_metadata <- data.frame(individualID = trees_in$indvdID,
+                              scientificName = trees_in$scntfcN,
+                              taxonID = trees_in$taxonID,
+                              #maxCrownDiameter = trees_in$crownDm,
+                              #height = trees_in$height,
+                              X = trees_in$X,
+                              Y = trees_in$Y,
+                              # create ID column to pair the tree metadata with 
+                              # extracted spectra data 
+                              ID =  1:nrow(trees_in))
   
   # create a list of increasing integer counts to keep track of how many rows 
   # (pixels or spectra) belong to each tree 
@@ -919,14 +939,14 @@ write_spectra_to_file <- function(spectra, polygons_in, filename_out){
   }
   
   # combine the additional data with each spectrum for writing to file
-  spectra_write <- merge(polygon_metadata,
+  spectra_write <- merge(tree_metadata,
                          spectra,
                          by="ID") %>% 
     mutate(spectra_count = counts)%>% 
     select(ID, spectra_count, everything())
   
   # take a look at the first rows of the spectra data to write 
-  head(spectra_write[,1:10] %>% select(-c(scientificName,X,Y)))
+  #head(spectra_write)
   
   
   # write the spectral data to file for future analysis 
@@ -935,3 +955,191 @@ write_spectra_to_file <- function(spectra, polygons_in, filename_out){
   return(spectra_write)
   
 }
+
+
+# generateTrainingSet -----------------------------------------------------
+
+generateTrainingData <- function(shapefileLayer){
+  
+  # read the shapefile layer 
+  shp <- rgdal::readOGR(dsn = shapefile_dir,
+                        layer = shapefileLayer)
+    
+  # convert to SF object
+  shp_sf <- sf::st_as_sf(shp)
+  
+  # isolate the center coordinates of the trees 
+  shp_coords <- shp_sf %>% 
+    sf::st_coordinates() %>% 
+    as.data.frame()
+  
+  # add new columns for the tree location coordinates 
+  shp_sf$X <- tree_coords$X
+  shp_sf$Y <- tree_coords$Y
+  
+  # add empty columns for the min and max coordinates for each polygon
+  shp_sf$xmin <- NA 
+  shp_sf$xmax <- NA 
+  shp_sf$ymin <- NA 
+  shp_sf$ymax <- NA 
+  
+  
+  
+  
+  
+  # loop through h5 files 
+  
+  # get the names of all HDF5 files to iterate through
+  h5_list <- list.files(path = h5_dir, full.names = TRUE)
+  h5_list <- h5_list[grepl("*.h5", h5_list)]
+  
+  # loop through h5 files 
+  for (h5 in h5_list) {
+    
+    print(h5)
+    
+    # each current hyperspectral tile must be read and stacked into a 
+    # georeferenced rasterstack object (so it can be clipped with point / polygon
+    # shapefiles). The process of creating a rasterstack takes a while for 
+    # each tile, so after creating each rasterstack once, each object gets 
+    # written to a file. 
+    
+    # Build up the rasterstack filename by parsing out the easting/northing
+    # coordinates from the current h5 filename.
+    rasterstack_filename <- paste0(h5_dir, "rasterstack_",
+                                   str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5],"_",
+                                   str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6],".rds")
+    
+    print(paste("rasterstack filename: ", rasterstack_filename))
+    
+    # check to see if a .rds file already exists for the current tile.
+    if (file.exists(rasterstack_filename)){
+      
+      # if it exists, read that instead of re-generating the same rasterstack.
+      message("rasterstack was already created for current tile")
+      # restore / read the rasterstack from file
+      s <- readRDS(file = rasterstack_filename)
+      
+    } else{
+      
+      # if it doesn't exist, generate the rasterstack. 
+      message("creating rasterstack for current tile...")
+      # create a georeferenced rasterstack using the current hyperspectral tile
+      s <- stack_hyperspectral(h5)
+      # save the rasterstack to file 
+      saveRDS(s, file = rasterstack_filename)
+    }
+    
+    # figure out which trees are within the current tile by 
+    polygons_in <- tree_polygons_points %>% 
+      dplyr::filter(xmin >= extent(s)[1] & 
+                      xmax < extent(s)[2] & 
+                      ymin >= extent(s)[3] & 
+                      ymax < extent(s)[4])
+    
+    print(paste0(as.character(nrow(polygons_in))," polygons in current tile"))
+    
+    # if no polygons are within the current tile, skip to the next one
+    if (nrow(polygons_in)==0){
+      print("no trees located within current tile... skipping to next tile")
+      next
+    }
+    
+    # convert from SF obect to SpatialPolygons object for clipping
+    polygons_in_sp <- sf::as_Spatial(polygons_in$geometry.polygon,
+                                     IDs = as.character(polygons_in$indvdID))
+    points_in_sp <- sf::as_Spatial(polygons_in$geometry.point,
+                                   IDs = as.character(polygons_in$indvdID))
+    
+    ### clip the hyperspectral raster stack with the polygons within current tile.
+    # the returned objects are data frames, each row corresponds to a pixel in the
+    # hyperspectral imagery. The ID number refers to which polygon or point that 
+    # the pixel belongs to. A large polygon will lead to many extracted pixels
+    # (many rows in the output data frame)
+    
+    # stem point locations 
+    extracted_point_spectra <- raster::extract(s, points_in_sp, df = TRUE)
+    
+    # clipped_overlap polygons generated using the neon_veg workflow 
+    extracted_polygon_spectra <- raster::extract(s, polygons_in_sp, df = TRUE)
+    
+    # the buffer parameter can be used to include cells around each point of a
+    # given size. the buffer parameter can be specified as a vector of the length
+    # of the number of points. 
+    
+    # maxCrownDiameter (buffer of (maxCrownDiameter / 2))
+    #  buffers_mxDm <- tree_polygons_points$crownDm / 2
+    #  extracted_spectra_buffer_mxDm <- raster::extract(s, 
+    #                                                   points_in_sp,
+    #                                                   buffer = buffers_mxDm,
+    #                                                   df = TRUE)
+    
+    # 50% max crown diameter (buffer of (maxCrownDiameter / 4))
+    #buffers_50percent <- tree_polygons_points$crownDm / 4
+    #extracted_spectra_buffer_50percentDm <- raster::extract(s, 
+    #                                                 points_in_sp,
+    #                                                 buffer = buffers_50percent,
+    #                                                 df = TRUE)
+    # GETTING WEIRD ERROR: 
+    #Error in (function (..., deparse.level = 1)  : 
+    #number of columns of matrices must match (see arg 6)
+    
+    # Try substituting this 50% buffer parameter instead with the polygons
+    # created using neon_veg workflow with a 50% smaller diameter?????? 
+    
+    # 50% max crown diameter (buffer of (maxCrownDiameter / 4))
+    #  extracted_polygon_halfDiam_spectra <- raster::extract(s, polygons_halfDiam_in_sp, df = TRUE)
+    
+    
+    
+    ### write spectra to file 
+    
+    # stem point locations 
+    write_spectra_to_file(spectra = extracted_point_spectra,
+                          polygons_in = polygons_in,
+                          filename_out = paste0(out_dir,
+                                                "spectral_reflectance_",
+                                                as.character(s@extent[1]),"_",
+                                                as.character(s@extent[3]),"_",
+                                                "stem_points",
+                                                ".csv"))
+    
+    # clipped_overlap polygons generated using the neon_veg workflow 
+    # write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
+    #                       polygons_in = polygons_in,
+    #                       filename_out = paste0(out_dir,
+    #                                             "spectral_reflectance_",
+    #                                             as.character(s@extent[1]),"_",
+    #                                             as.character(s@extent[3]),"_",
+    #                                             "polygons_clipped_overlap_max_diameter",
+    #                                             ".csv"))
+    
+    # maxCrownDiameter (buffer of (maxCrownDiameter / 2))
+    #  write_spectra_to_file(spectra = as.data.frame(extracted_spectra_buffer_mxDm),
+    #                        polygons_in = polygons_in,
+    #                        filename_out = paste0(out_dir,
+    #                                              "spectral_reflectance_",
+    #                                              as.character(s@extent[1]),"_",
+    #                                              as.character(s@extent[3]),"_",
+    #                                              "buffer_max_diameter",
+    #                                              ".csv"))
+    
+    # clipped_overlap polygons generated using the neon_veg workflow,
+    # 50% maxCrownDiameter size. 
+    write_spectra_to_file(spectra = as.data.frame(extracted_polygon_spectra),
+                          polygons_in = polygons_in,
+                          filename_out = paste0(out_dir,
+                                                "spectral_reflectance_",
+                                                as.character(s@extent[1]),"_",
+                                                as.character(s@extent[3]),"_",
+                                                "polygons_clipped_overlap",
+                                                ".csv"))
+    
+    
+  }
+  
+  
+  
+}
+
+
