@@ -7,6 +7,7 @@ library(tidyr)
 library(sf)
 library(dplyr)
 library(data.table) 
+library(stringr) # for str_split function
 
 # set working directory
 setwd("~/github/jubilant-waffle/code/")
@@ -697,6 +698,14 @@ writeRaster(h5_rgb,
 
 
 
+
+
+
+
+
+
+
+
 #################################################################################
 # Random Forest Classification --------------------------------------------
 # This part of the script might eventually replace the part of the script above,
@@ -722,6 +731,7 @@ chm_dir <- paste0('../data/', site_code, '/chm/')       # CHM geotiffs
 slope_dir <- paste0('../data/', site_code, '/slope/')   # slope geotiffs
 aspect_dir <- paste0('../data/', site_code, '/aspect/') # aspect geotiffs
 rgb_dir <- paste0('../data/', site_code, '/rgb/')       # rgb image geotiffs
+vegIndices_dir <- paste0('../data/', site_code, '/vegIndices/') # vegetation index .tifs 
 
 # hyperspectral data - list the .h5 files 
 h5_list <- list.files(path = h5_dir, full.names = TRUE)
@@ -738,8 +748,9 @@ aspect_list <- aspect_list[grepl("*aspect.tif$", aspect_list)]
 # list the RGB files 
 rgb_list <- list.files(path = rgb_dir, full.names = TRUE)
 rgb_list<- rgb_list[grepl("*image.tif$", rgb_list)]
-# TO DO: add the spectral indices one day if possible 
-
+# list the spectral indices 
+vegIndices_list <- list.dirs(path = vegIndices_dir, full.names = TRUE)
+vegIndices_names <- c("ARVI","EVI","NDLI","NDNI","NDVI","PRI","SAVI")
 
 
 # define the output directory. If it doesn't exist already, create it.
@@ -851,8 +862,8 @@ for(i in 1:nrow(shapefileLayerNames)){
     # coordinates from the current h5 filename.
     
     # parse the UTM easting and northing values from the current h5 filename
-    easting <- str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5]
-    northing <- str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6]
+    easting <- stringr::str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5]
+    northing <- stringr::str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6]
     # combine them with an underscore; use this to find corresponding tiles 
     # of various remote sensing data
     east_north_string <- paste0(easting,"_",northing)
@@ -886,6 +897,14 @@ for(i in 1:nrow(shapefileLayerNames)){
     chm <- raster::raster(grep(east_north_string, chm_list, value=TRUE))
     slope <- raster::raster(grep(east_north_string, slope_list, value=TRUE))
     aspect <- raster::raster(grep(east_north_string, aspect_list, value=TRUE))
+    # for the vegetation indices, go into the corresponding folder for current tile
+    # and get a list of all the vegIndex geotiffs. then read all of those geotiffs 
+    # into a single raster stack.
+    vegIndices <- raster::stack(list.files(grep(east_north_string, 
+                                                      vegIndices_list, 
+                                                      value=TRUE), 
+                                                pattern="tif$", full.names=TRUE))
+    
     
     # set the raster name for each layer to be simply the name of the data 
     # (i.e. "aspect") as opposed to the full filename 
@@ -893,6 +912,9 @@ for(i in 1:nrow(shapefileLayerNames)){
     names(chm) <- "chm"
     names(slope) <- "slope"
     names(aspect) <- "aspect"
+    # name each of the vegetation index layers based on the last piece of each 
+    # respective filename, e.g. "NDVI" and 
+    names(vegIndices) <- sapply(stringr::str_split(names(vegIndices),"_"),tail,1)
     
     # create the pixel number grid as a layer to add to the data cube. 
     # this one keeps track of individual pixel ID's
@@ -922,7 +944,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     # now, all of the hyperspectral data files have been read in for the current
     # tile. add each one to the hyperspectral data stack along with the 
     # layer to keep track pixel number within the tile. 
-    stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, pixelNumbers)
+    stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, vegIndices, pixelNumbers)
     
     # TO DO: write the data cube to file to speed up testing??? 
     
@@ -988,95 +1010,97 @@ for(i in 1:nrow(shapefileLayerNames)){
       select(ID, spectra_count, everything()) %>% 
       select(-geometry)
     
-    
-    # see if there is a unique pixelNumber for each row in the extracted spectra df
-    if( length(unique(spectra_write$pixelNumber)) == nrow(spectra_write)) {
-      print("There is one unique pixel ID for each extracted spectrum")
-    } else{
-      print("There are multiple extracted spectra with the same pixel ID")
-      
-      # if the same pixel is extracted more than once (this can happen when polygon
-      # boundaries are touching or very close to one another), based on multiple
-      # occurrences of a single "pixelNumber" in the extracted_spectra,
-      # check the height of the tree. Let the taller tree keep the pixel.
-      
-      # loop through all pixelNumber values that appear in the extracted_spectra
-      # more than once. 
-      duplicatePixelNumbers <- unique(spectra_write$pixelNumber[duplicated(spectra_write$pixelNumber)])
-      
-      for (p in duplicatePixelNumbers){
-        
-        print(p)
-        
-        spectraComparison <- spectra_write %>% 
-          select(c("indvdID", "height", "mxCrwnD", "pixelNumber")) %>% 
-          filter(pixelNumber == p)
-        
-        print(spectraComparison)
-        
-        # find the maximum height across all rows with the current pixelNumber 
-        #maxHeight <- max(spectra_write$height[spectra_write$pixelNumber == p])
-        maxHeight <- max(spectraComparison$height)
-        
-        print(paste0("Max height for all rows with current pixelNumber: ", as.character(maxHeight)))
-        
-        # if one tree is the tallest, delete the other rows from the extracted spectra. 
-        if(sum(spectraComparison$height == maxHeight) == 1){
-          
-          deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$height != maxHeight) 
-          
-          print("Deleting rows: ")
-          print(deleteRows)
-          
-          # delete the rows with duplicated pixelNumber values that are not the tallest trees
-          spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
-          
-        } else{ 
-          # otherwise, if more than one tree with the current pixelNumber has 
-          # the maximum height value, see if one has a greater crown diameter 
-          
-          maxCrwnD = max(spectraComparison$mxCrwnD)
-          
-          print(paste0("Max diam for all rows with current pixelNumber: ", as.character(maxCrwnD)))
-          
-          if(sum(spectraComparison$mxCrwnD == maxCrwnD) == 1){
-            
-            deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$mxCrwnD != maxCrwnD) 
-            
-            print("Deleting rows: ")
-            print(deleteRows)
-            
-            # delete the rows with duplicated pixelNumber values without the largest crown diam
-            spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
-            
-          } else{
-            # if the duplicate rows have identical height and crown diameter, 
-            # then just keep the first entry and remove any other duplicates 
-            print("DUPLICATE ENTRIES HAVE IDENTICAL MAX HEIGHT AND MAX CROWN DIAM.....")
-            
-            # keep the first entry that has the max height and max diameter 
-            keepID <- spectra_write$indvdID[spectra_write$pixelNumber == p &
-                                              spectra_write$height == maxHeight & 
-                                              spectra_write$mxCrwnD == maxCrwnD][1]
-            
-            # list the other ID's for duplicate pixelNumbers to be deleted 
-            deleteIDs <- spectraComparison$indvdID[!spectraComparison$indvdID %in% keepID]
-            
-            # delete the duplicate entries from the spectra data set 
-            spectra_write <- spectra_write %>% filter(!indvdID %in% deleteIDs)
-          }
-        }
-      }
-      
-      
-      print("number of unique pixelNumbers in the updated spectra_write data frame: ")
-      print(length(unique(spectra_write$pixelNumber)))
-      
-      print("number of rows in updated spectra_write data frame: ")
-      print(nrow(spectra_write))
-      
-    }
-    
+    # 
+    # # see if there is a unique pixelNumber for each row in the extracted spectra df
+    # if( length(unique(spectra_write$pixelNumber)) == nrow(spectra_write)) {
+    #   print("There is one unique pixel ID for each extracted spectrum")
+    # } 
+    # 
+    # else{
+    #   print("There are multiple extracted spectra with the same pixel ID")
+    #   
+    #   # if the same pixel is extracted more than once (this can happen when polygon
+    #   # boundaries are touching or very close to one another), based on multiple
+    #   # occurrences of a single "pixelNumber" in the extracted_spectra,
+    #   # check the height of the tree. Let the taller tree keep the pixel.
+    #   
+    #   # loop through all pixelNumber values that appear in the extracted_spectra
+    #   # more than once. 
+    #   duplicatePixelNumbers <- unique(spectra_write$pixelNumber[duplicated(spectra_write$pixelNumber)])
+    #   
+    #   for (p in duplicatePixelNumbers){
+    #     
+    #     print(p)
+    #     
+    #     spectraComparison <- spectra_write %>% 
+    #       select(c("indvdID", "height", "mxCrwnD", "pixelNumber")) %>% 
+    #       filter(pixelNumber == p)
+    #     
+    #     print(spectraComparison)
+    #     
+    #     # find the maximum height across all rows with the current pixelNumber 
+    #     #maxHeight <- max(spectra_write$height[spectra_write$pixelNumber == p])
+    #     maxHeight <- max(spectraComparison$height)
+    #     
+    #     print(paste0("Max height for all rows with current pixelNumber: ", as.character(maxHeight)))
+    #     
+    #     # if one tree is the tallest, delete the other rows from the extracted spectra. 
+    #     if(sum(spectraComparison$height == maxHeight) == 1){
+    #       
+    #       deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$height != maxHeight) 
+    #       
+    #       print("Deleting rows: ")
+    #       print(deleteRows)
+    #       
+    #       # delete the rows with duplicated pixelNumber values that are not the tallest trees
+    #       spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
+    #       
+    #     } else{ 
+    #       # otherwise, if more than one tree with the current pixelNumber has 
+    #       # the maximum height value, see if one has a greater crown diameter 
+    #       
+    #       maxCrwnD = max(spectraComparison$mxCrwnD)
+    #       
+    #       print(paste0("Max diam for all rows with current pixelNumber: ", as.character(maxCrwnD)))
+    #       
+    #       if(sum(spectraComparison$mxCrwnD == maxCrwnD) == 1){
+    #         
+    #         deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$mxCrwnD != maxCrwnD) 
+    #         
+    #         print("Deleting rows: ")
+    #         print(deleteRows)
+    #         
+    #         # delete the rows with duplicated pixelNumber values without the largest crown diam
+    #         spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
+    #         
+    #       } else{
+    #         # if the duplicate rows have identical height and crown diameter, 
+    #         # then just keep the first entry and remove any other duplicates 
+    #         print("DUPLICATE ENTRIES HAVE IDENTICAL MAX HEIGHT AND MAX CROWN DIAM.....")
+    #         
+    #         # keep the first entry that has the max height and max diameter 
+    #         keepID <- spectra_write$indvdID[spectra_write$pixelNumber == p &
+    #                                           spectra_write$height == maxHeight & 
+    #                                           spectra_write$mxCrwnD == maxCrwnD][1]
+    #         
+    #         # list the other ID's for duplicate pixelNumbers to be deleted 
+    #         deleteIDs <- spectraComparison$indvdID[!spectraComparison$indvdID %in% keepID]
+    #         
+    #         # delete the duplicate entries from the spectra data set 
+    #         spectra_write <- spectra_write %>% filter(!indvdID %in% deleteIDs)
+    #       }
+    #     }
+    #   }
+    #   
+    #   
+    #   print("number of unique pixelNumbers in the updated spectra_write data frame: ")
+    #   print(length(unique(spectra_write$pixelNumber)))
+    #   
+    #   print("number of rows in updated spectra_write data frame: ")
+    #   print(nrow(spectra_write))
+    #   
+    # }
+    # 
     
     #write extracted spectra and other remote sensing data values to file 
     write.csv(spectra_write, 
