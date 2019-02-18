@@ -697,7 +697,7 @@ writeRaster(h5_rgb,
 
 
 
-
+#################################################################################
 # Random Forest Classification --------------------------------------------
 # This part of the script might eventually replace the part of the script above,
 # so that's why there is a lot of repeated code. 
@@ -765,7 +765,6 @@ shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
 # all have identical height
 allStems_layer <- c("allStems",
                     "shapefiles_maxDiameter/",
-                    #"mapped_stems_with_crown_diameter")
                     "mapped_stems_woody_multibole_removed") 
 
 # polygons with max diameter, one generated for each stem point at NIWO.
@@ -773,7 +772,6 @@ allStems_layer <- c("allStems",
 # is after multibole entries are removed. 
 allPolygons_maxDiameter_layer <- c("allPolygons_maxDiameter",
                                    "shapefiles_maxDiameter/",
-                                   #"polygons_all")
                                    "polygons_multibole_removed")
 
 # polygons with half max diameter, one generated for each stem point at NIWO
@@ -816,294 +814,423 @@ rownames(shapefileLayerNames) <- 1:nrow(shapefileLayerNames)
 
 for(i in 1:nrow(shapefileLayerNames)){ 
   
-print(paste0("Currently extracting features for tree points / polygons in:  ", 
-             shapefileLayerNames$description[i]))
-
-# read the shapefile layer 
-shp <- rgdal::readOGR(dsn = paste0(shapefile_dir,shapefileLayerNames$dsn[i]),
-                      layer = shapefileLayerNames$layer[i])
-
-# convert to SF object
-shp_sf <- sf::st_as_sf(shp)
-
-# add columns for the center location of each tree 
-shp_coords <- shp_sf %>% 
-  sf::st_centroid() %>%  # get the centroids first for polygon geometries 
-  sf::st_coordinates() %>% 
-  as.data.frame()
-
-# add new columns for the tree location coordinates 
-shp_sf$X <- shp_coords$X
-shp_sf$Y <- shp_coords$Y
-
-# loop through the tiles
-for (h5 in h5_list) {
+  print(paste0("Currently extracting features for tree points / polygons in:  ", 
+               shapefileLayerNames$description[i]))
   
-  # print current hyperspectral filename 
-  print(h5)
+  # read the shapefile layer 
+  shp <- rgdal::readOGR(dsn = paste0(shapefile_dir,shapefileLayerNames$dsn[i]),
+                        layer = shapefileLayerNames$layer[i])
   
-  # each current hyperspectral tile must be read and stacked into a 
-  # georeferenced rasterstack object (so it can be clipped with point / polygon
-  # shapefiles). The process of creating a rasterstack takes a while for 
-  # each tile, so after creating each rasterstack once, each object gets 
-  # written to a file. 
+  # convert to SF object
+  shp_sf <- sf::st_as_sf(shp)
   
-  # Build up the rasterstack filename by parsing out the easting/northing
-  # coordinates from the current h5 filename.
+  # add columns for the center location of each tree 
+  shp_coords <- shp_sf %>% 
+    sf::st_centroid() %>%  # get the centroids first for polygon geometries 
+    sf::st_coordinates() %>% 
+    as.data.frame()
   
-  # parse the UTM easting and northing values from the current h5 filename
-  easting <- str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5]
-  northing <- str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6]
-  # combine them with an underscore; use this to find corresponding tiles 
-  # of various remote sensing data
-  east_north_string <- paste0(easting,"_",northing)
+  # add new columns for the tree location coordinates 
+  shp_sf$X <- shp_coords$X
+  shp_sf$Y <- shp_coords$Y
   
-  # Build up the h5 rasterstack filename
-  rasterstack_filename <- paste0(h5_dir, "rasterstack_",
-                                 east_north_string, ".rds")
-  
-  print(paste("rasterstack filename: ", rasterstack_filename))
-  
-  # check to see if a .rds file already exists for the current tile.
-  if (file.exists(rasterstack_filename)){
+  # loop through the tiles
+  for (h5 in h5_list) {
     
-    # if it exists, read that instead of re-generating the same rasterstack.
-    message("reading rasterstack (already created for current tile)...")
-    # restore / read the rasterstack from file
-    s <- readRDS(file = rasterstack_filename)
+    # print current hyperspectral filename 
+    print(h5)
     
-  } else{
+    # each current hyperspectral tile must be read and stacked into a 
+    # georeferenced rasterstack object (so it can be clipped with point / polygon
+    # shapefiles). The process of creating a rasterstack takes a while for 
+    # each tile, so after creating each rasterstack once, each object gets 
+    # written to a file. 
     
-    # if it doesn't exist, generate the rasterstack. 
-    message("creating rasterstack for current tile...")
-    # create a georeferenced rasterstack using the current hyperspectral tile
-    s <- stack_hyperspectral(h5)
-    # save the rasterstack to file 
-    saveRDS(s, file = rasterstack_filename)
-  }
-  
-  # read the corresponding remote sensing data for current tile
-  print("Adding CHM, slope, aspect, pixelNumber to the hyperspectral data cube...")
-  chm <- raster(grep(east_north_string, chm_list, value=TRUE))
-  slope <- raster(grep(east_north_string, slope_list, value=TRUE))
-  aspect <- raster(grep(east_north_string, aspect_list, value=TRUE))
-  
-  # set the raster name for each layer to be simply the name of the data 
-  # (i.e. "aspect") as opposed to the full filename 
-  # (i.e. ""NEON_D13_NIWO_DP3_452000_4431000_aspect")
-  names(chm) <- "chm"
-  names(slope) <- "slope"
-  names(aspect) <- "aspect"
-  
-  # create the pixel number grid as a layer to add to the data cube. 
-  # this one keeps track of individual pixel ID's
-  # to avoid duplicate spectra being extracted. Basically, assign an integer ID
-  # to each pixel in the 1000x1000 raster. This raster needs to have the same 
-  # dimensions, extent, crs as the other layers so they can be stacked together. 
-  # create a vector of IDs from 1 to the number of pixels in one band (#rows x #cols)
-  pixelID <- 1:(nrow(s) * ncol(s))
-  # reshape this 1D vector into a 2D matrix 
-  dim(pixelID) <- c(nrow(s),ncol(s))
-  # create a raster layer of pixel numbers 
-  pixelNumbers <- raster::raster(pixelID, crs = crs(s))
-  extent(pixelNumbers) <- extent(s)
-  names(pixelNumbers) <- "pixelNumber"
-  
-  
-  # need to figure out which metrics to compute (using which band(s) for the 
-  # RGB data, then re-grid it to have the same spatial resolution as the other 
-  # layers before adding it to the stack. 
-  # The RGB data is 10,000x10,000 pixels. 
-  # All other layers are 1,000x1,000 pixels.
-  #rgb <- stack(grep(east_north_string, rgb_list, value=TRUE)) 
-  # are the bands in R,G,B order? if so, rename accordingly: 
-  #names(rgb) <- c("red","green","blue")
-  
-  
-  # now, all of the hyperspectral data files have been read in for the current
-  # tile. add each one to the hyperspectral data stack along with the 
-  # layer to keep track pixel number within the tile. 
-  stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, pixelNumbers)
-
-  # write the data cube to file to speed up testing??? 
-  
-  
-  
-  # figure out which trees are within the current tile by comparing each
-  # X,Y coordinate to the extent of the current tile 
-  trees_in <- shp_sf %>% 
-    dplyr::filter(X >= extent(s)[1] & 
-                  X < extent(s)[2] & 
-                  Y >= extent(s)[3] & 
-                  Y  < extent(s)[4])
-  
-  print(paste0(as.character(nrow(trees_in))," trees in current tile"))
-  
-  # if no polygons are within the current tile, skip to the next one
-  if (nrow(trees_in)==0){
-    print("no trees located within current tile... skipping to next tile")
-    next
-  }
-  
-  # convert from SF obect to Spatial object for clipping
-  trees_in_sp <- sf::as_Spatial(trees_in,
-                                IDs = as.character(trees_in$indvdID))
-  
-  # clip the hyperspectral raster stack with the polygons within current tile.
-  # the returned objects are data frames, each row corresponds to a pixel in the
-  # hyperspectral imagery. The ID number refers to which tree that the 
-  # the pixel belongs to. A large polygon will lead to many extracted pixels
-  # (many rows in the output data frame), whereas tree stem points will
-  # lead to a single extracted pixel per tree. 
-  print("Extracting features for each tree from the data cube... ")
-  extracted_spectra <- raster::extract(stacked_aop_data, 
-                                       trees_in_sp, 
-                                       df = TRUE)
-  
-  # TO DO: 
-  # try adjusting this extract step to only get pixels WITHIN each tree polygon,
-  # also try calculating the percentage that each pixel is within a polygon
-  # and keep only pixels with > 50% overlap 
-  
-  # merge the extracted spectra and other data values with the tree info 
-  tree_metadata <- data.frame(trees_in) %>% 
-    mutate(ID = 1:nrow(trees_in))
-  
-  # create a list of increasing integer counts to keep track of how many rows 
-  # (pixels or spectra) belong to each tree 
-  for (j in unique(extracted_spectra$ID)){
-    if(j==1){
-      counts = 1:sum(extracted_spectra$ID==j)
+    # Build up the rasterstack filename by parsing out the easting/northing
+    # coordinates from the current h5 filename.
+    
+    # parse the UTM easting and northing values from the current h5 filename
+    easting <- str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5]
+    northing <- str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][6]
+    # combine them with an underscore; use this to find corresponding tiles 
+    # of various remote sensing data
+    east_north_string <- paste0(easting,"_",northing)
+    
+    # Build up the h5 rasterstack filename
+    rasterstack_filename <- paste0(h5_dir, "rasterstack_",
+                                   east_north_string, ".rds")
+    
+    print(paste("rasterstack filename: ", rasterstack_filename))
+    
+    # check to see if a .rds file already exists for the current tile.
+    if (file.exists(rasterstack_filename)){
+      
+      # if it exists, read that instead of re-generating the same rasterstack.
+      message("reading rasterstack (already created for current tile)...")
+      # restore / read the rasterstack from file
+      s <- readRDS(file = rasterstack_filename)
+      
+    } else{
+      
+      # if it doesn't exist, generate the rasterstack. 
+      message("creating rasterstack for current tile...")
+      # create a georeferenced rasterstack using the current hyperspectral tile
+      s <- stack_hyperspectral(h5)
+      # save the rasterstack to file 
+      saveRDS(s, file = rasterstack_filename)
     }
-    else{
-      counts = append(counts, 1:sum(extracted_spectra$ID==j))
+    
+    # read the corresponding remote sensing data for current tile
+    print("Adding CHM, slope, aspect, pixelNumber to the hyperspectral data cube...")
+    chm <- raster(grep(east_north_string, chm_list, value=TRUE))
+    slope <- raster(grep(east_north_string, slope_list, value=TRUE))
+    aspect <- raster(grep(east_north_string, aspect_list, value=TRUE))
+    
+    # set the raster name for each layer to be simply the name of the data 
+    # (i.e. "aspect") as opposed to the full filename 
+    # (i.e. ""NEON_D13_NIWO_DP3_452000_4431000_aspect")
+    names(chm) <- "chm"
+    names(slope) <- "slope"
+    names(aspect) <- "aspect"
+    
+    # create the pixel number grid as a layer to add to the data cube. 
+    # this one keeps track of individual pixel ID's
+    # to avoid duplicate spectra being extracted. Basically, assign an integer ID
+    # to each pixel in the 1000x1000 raster. This raster needs to have the same 
+    # dimensions, extent, crs as the other layers so they can be stacked together. 
+    # create a vector of IDs from 1 to the number of pixels in one band (#rows x #cols)
+    pixelID <- 1:(nrow(s) * ncol(s))
+    # reshape this 1D vector into a 2D matrix 
+    dim(pixelID) <- c(nrow(s),ncol(s))
+    # create a raster layer of pixel numbers 
+    pixelNumbers <- raster::raster(pixelID, crs = crs(s))
+    extent(pixelNumbers) <- extent(s)
+    names(pixelNumbers) <- "pixelNumber"
+    
+    
+    # need to figure out which metrics to compute (using which band(s) for the 
+    # RGB data, then re-grid it to have the same spatial resolution as the other 
+    # layers before adding it to the stack. 
+    # The RGB data is 10,000x10,000 pixels. 
+    # All other layers are 1,000x1,000 pixels.
+    #rgb <- stack(grep(east_north_string, rgb_list, value=TRUE)) 
+    # are the bands in R,G,B order? if so, rename accordingly: 
+    #names(rgb) <- c("red","green","blue")
+    
+    
+    # now, all of the hyperspectral data files have been read in for the current
+    # tile. add each one to the hyperspectral data stack along with the 
+    # layer to keep track pixel number within the tile. 
+    stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, pixelNumbers)
+    
+    # TO DO: write the data cube to file to speed up testing??? 
+    
+    
+    
+    # figure out which trees are within the current tile by comparing each
+    # X,Y coordinate to the extent of the current tile 
+    trees_in <- shp_sf %>% 
+      dplyr::filter(X >= extent(s)[1] & 
+                      X < extent(s)[2] & 
+                      Y >= extent(s)[3] & 
+                      Y  < extent(s)[4])
+    
+    print(paste0(as.character(nrow(trees_in))," trees in current tile"))
+    
+    # if no polygons are within the current tile, skip to the next one
+    if (nrow(trees_in)==0){
+      print("no trees located within current tile... skipping to next tile")
+      next
     }
-  }
-  
-  # combine the additional data with each spectrum for writing to file
-  spectra_write <- merge(tree_metadata,
-                         extracted_spectra,
-                         by="ID") %>% 
-    mutate(spectra_count = counts)%>% 
-    select(ID, spectra_count, everything())
-  
-  
-  # see if there is a unique pixelNumber for each row in the extracted spectra df
-  if( length(unique(spectra_write$pixelNumber)) == nrow(spectra_write)) {
-    print("There is one unique pixel ID for each extracted spectrum")
-  } else{
-    print("There are multiple extracted spectra with the same pixel ID")
+    
+    # convert from SF obect to Spatial object for clipping
+    trees_in_sp <- sf::as_Spatial(trees_in,
+                                  IDs = as.character(trees_in$indvdID))
+    
+    # clip the hyperspectral raster stack with the polygons within current tile.
+    # the returned objects are data frames, each row corresponds to a pixel in the
+    # hyperspectral imagery. The ID number refers to which tree that the 
+    # the pixel belongs to. A large polygon will lead to many extracted pixels
+    # (many rows in the output data frame), whereas tree stem points will
+    # lead to a single extracted pixel per tree. 
+    print("Extracting features for each tree from the data cube... ")
+    extracted_spectra <- raster::extract(stacked_aop_data, 
+                                         trees_in_sp, 
+                                         df = TRUE)
     
     # TO DO: 
-    # if the same pixel is extracted more than once (this can happen when polygon
-    # boundaries are touching or very close to one another), based on multiple
-    # occurrences of a single "pixelNumber" in the extracted_spectra,
-    # check the height of the tree. Let the taller tree keep the pixel.
-
-    # loop through all pixelNumber values that appear in the extracted_spectra
-    # more than once. 
-    duplicatePixelNumbers <- unique(spectra_write$pixelNumber[duplicated(spectra_write$pixelNumber)])
+    # try adjusting this extract step to only get pixels WITHIN each tree polygon,
+    # also try calculating the percentage that each pixel is within a polygon
+    # and keep only pixels with > 50% overlap 
     
-    for (p in duplicatePixelNumbers){
+    # merge the extracted spectra and other data values with the tree info 
+    tree_metadata <- data.frame(trees_in) %>% 
+      mutate(ID = 1:nrow(trees_in))
+    
+    # create a list of increasing integer counts to keep track of how many rows 
+    # (pixels or spectra) belong to each tree 
+    for (j in unique(extracted_spectra$ID)){
+      if(j==1){
+        counts = 1:sum(extracted_spectra$ID==j)
+      }
+      else{
+        counts = append(counts, 1:sum(extracted_spectra$ID==j))
+      }
+    }
+    
+    # combine the additional data with each spectrum for writing to file.
+    # remove the geometry column to avoid issues when writing to csv later 
+    spectra_write <- merge(tree_metadata,
+                           extracted_spectra,
+                           by="ID") %>% 
+      mutate(spectra_count = counts)%>% 
+      select(ID, spectra_count, everything()) %>% 
+      select(-geometry)
+    
+    
+    # see if there is a unique pixelNumber for each row in the extracted spectra df
+    if( length(unique(spectra_write$pixelNumber)) == nrow(spectra_write)) {
+      print("There is one unique pixel ID for each extracted spectrum")
+    } else{
+      print("There are multiple extracted spectra with the same pixel ID")
       
-      print(p)
+      # if the same pixel is extracted more than once (this can happen when polygon
+      # boundaries are touching or very close to one another), based on multiple
+      # occurrences of a single "pixelNumber" in the extracted_spectra,
+      # check the height of the tree. Let the taller tree keep the pixel.
       
-      spectraComparison <- spectra_write %>% 
-                        select(c("indvdID", "height", "mxCrwnD", "pixelNumber")) %>% 
-                        filter(pixelNumber == p)
+      # loop through all pixelNumber values that appear in the extracted_spectra
+      # more than once. 
+      duplicatePixelNumbers <- unique(spectra_write$pixelNumber[duplicated(spectra_write$pixelNumber)])
       
-      print(spectraComparison)
-      
-      # find the maximum height across all rows with the current pixelNumber 
-      #maxHeight <- max(spectra_write$height[spectra_write$pixelNumber == p])
-      maxHeight <- max(spectraComparison$height)
-      
-      print(paste0("Max height for all rows with current pixelNumber: ", as.character(maxHeight)))
-
-      # if one tree is the tallest, delete the other rows from the extracted spectra. 
-      if(sum(spectraComparison$height == maxHeight) == 1){
+      for (p in duplicatePixelNumbers){
         
-        deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$height != maxHeight) 
+        print(p)
         
-        print("Deleting rows: ")
-        print(deleteRows)
+        spectraComparison <- spectra_write %>% 
+          select(c("indvdID", "height", "mxCrwnD", "pixelNumber")) %>% 
+          filter(pixelNumber == p)
         
-        # delete the rows with duplicated pixelNumber values that are not the tallest trees
-        spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
+        print(spectraComparison)
         
-      } else{ 
-        # otherwise, if more than one tree with the current pixelNumber has 
-        # the maximum height value, see if one has a greater crown diameter 
+        # find the maximum height across all rows with the current pixelNumber 
+        #maxHeight <- max(spectra_write$height[spectra_write$pixelNumber == p])
+        maxHeight <- max(spectraComparison$height)
         
-        maxCrwnD = max(spectraComparison$mxCrwnD)
+        print(paste0("Max height for all rows with current pixelNumber: ", as.character(maxHeight)))
         
-        print(paste0("Max diam for all rows with current pixelNumber: ", as.character(maxCrwnD)))
-        
-        if(sum(spectraComparison$mxCrwnD == maxCrwnD) == 1){
+        # if one tree is the tallest, delete the other rows from the extracted spectra. 
+        if(sum(spectraComparison$height == maxHeight) == 1){
           
-          deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$mxCrwnD != maxCrwnD) 
+          deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$height != maxHeight) 
           
           print("Deleting rows: ")
           print(deleteRows)
           
-          # delete the rows with duplicated pixelNumber values without the largest crown diam
+          # delete the rows with duplicated pixelNumber values that are not the tallest trees
           spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
           
-        } else{
-          # if the duplicate rows have identical height and crown diameter, 
-          # then just keep the first entry and remove any other duplicates 
-          print("DUPLICATE ENTRIES HAVE IDENTICAL MAX HEIGHT AND MAX CROWN DIAM.....")
+        } else{ 
+          # otherwise, if more than one tree with the current pixelNumber has 
+          # the maximum height value, see if one has a greater crown diameter 
           
-          # keep the first entry that has the max height and max diameter 
-          keepID <- spectra_write$indvdID[spectra_write$pixelNumber == p &
-                                             spectra_write$height == maxHeight & 
+          maxCrwnD = max(spectraComparison$mxCrwnD)
+          
+          print(paste0("Max diam for all rows with current pixelNumber: ", as.character(maxCrwnD)))
+          
+          if(sum(spectraComparison$mxCrwnD == maxCrwnD) == 1){
+            
+            deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$mxCrwnD != maxCrwnD) 
+            
+            print("Deleting rows: ")
+            print(deleteRows)
+            
+            # delete the rows with duplicated pixelNumber values without the largest crown diam
+            spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
+            
+          } else{
+            # if the duplicate rows have identical height and crown diameter, 
+            # then just keep the first entry and remove any other duplicates 
+            print("DUPLICATE ENTRIES HAVE IDENTICAL MAX HEIGHT AND MAX CROWN DIAM.....")
+            
+            # keep the first entry that has the max height and max diameter 
+            keepID <- spectra_write$indvdID[spectra_write$pixelNumber == p &
+                                              spectra_write$height == maxHeight & 
                                               spectra_write$mxCrwnD == maxCrwnD][1]
-          
-          # list the other ID's for duplicate pixelNumbers to be deleted 
-          deleteIDs <- spectraComparison$indvdID[!spectraComparison$indvdID %in% keepID]
-          
-          # delete the duplicate entries from the spectra data set 
-          spectra_write <- spectra_write %>% filter(!indvdID %in% deleteIDs)
-          
-          
-        
+            
+            # list the other ID's for duplicate pixelNumbers to be deleted 
+            deleteIDs <- spectraComparison$indvdID[!spectraComparison$indvdID %in% keepID]
+            
+            # delete the duplicate entries from the spectra data set 
+            spectra_write <- spectra_write %>% filter(!indvdID %in% deleteIDs)
           }
-        
         }
+      }
+      
+      
+      print("number of unique pixelNumbers in the updated spectra_write data frame: ")
+      print(length(unique(spectra_write$pixelNumber)))
+      
+      print("number of rows in updated spectra_write data frame: ")
+      print(nrow(spectra_write))
       
     }
     
     
-    print("number of unique pixelNumbers in the updated spectra_write data frame: ")
-    print(length(unique(spectra_write$pixelNumber)))
+    #write extracted spectra and other remote sensing data values to file 
+    write.csv(spectra_write, 
+              file = paste0(out_dir,
+                            "extracted_features_",
+                            east_north_string, "_",
+                            shapefileLayerNames$description[i], ".csv")) 
     
-    print("number of rows in updated spectra_write data frame: ")
-    print(nrow(spectra_write))
+ 
     
   }
   
-
-  #write extracted spectra and other remote sensing data values to file 
-  write_spectra_to_file(spectra = extracted_spectra,
-                        trees_in = trees_in,
-                        filename_out = paste0(out_dir,
-                                              "extracted_features_",
-                                              east_north_string, "_",
-                                              shapefileLayerNames$description[i], ".csv"))
+  # combine all the .csv files into one for the current 
+  # shapefile used to extract spectra from data cube. 
+  csvs <- list.files(out_dir, full.names = TRUE)
+  
+  # refine the output csv selection 
+  csvs <- csvs[grepl(paste0("*000_", shapefileLayerNames$description[i], ".csv"), csvs)]
+  
+  # combine all .csv data into a single data frame 
+  for (c in 1:length(csvs)){
+    print(csvs[c])
+    csv <- read.csv(csvs[c])
+    
+    if(c==1){
+      spectra_all <- csv
+    } else {
+      # add a bias value to the ID column, so in the end
+      # the ID values will range from 1 to n_trees
+      csv$ID <- csv$ID + max(spectra_all$ID)
+      spectra_all <- rbind(spectra_all, csv)
+    }
+  }
+  
+  # remove the unneccessary column "X.1"
+  spectra_all <- spectra_all %>% dplyr::select(-X.1)
+  
+  # write ALL the spectra to a single file 
+  write.csv(spectra_all,
+            file=paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
+                        shapefileLayerNames$description[i],".csv"))
   
 }
 
-}
 
+
+# ribbon plots ------------------------------------------------------------
+
+# TO DO: 
+# Should I create a master list of individual ID's for trees that appear in all
+# of the spectra data files? Since the neon_veg workflow reduces the number of samples? 
+
+# read wavelengths if not previously created
+wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
+                                           sep="\n",
+                                           skip = 1,
+                                           col.names = 'wavelength')))
+
+extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allStems.csv")
+extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allPolygons_maxDiameter.csv")
+extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allPolygons_halfDiameter.csv")
+extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegPolygons_maxDiameter.csv")
+
+createRibbonPlot(wavelengths, extracted_features_filename)
+
+
+
+# Set up random forest  ---------------------------------------------------
+# At this point, all of the shapefile scenarios have been used to extract
+# features from the giant remote sensing data cube.
+
+#for(i in 1:nrow(shapefileLayerNames)){ }
+  
+
+# filename of current .csv file to read 
+extracted_features_filename <- paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
+                                      shapefileLayerNames$description[1],".csv")
+print("Currently training the random forest with features extracted using:")
+print(extracted_features_filename)
+
+# read the values extracted from the data cube
+df_orig <- read.csv(extracted_features_filename)
 
 
 # Remove any spectra that have a height == 0
+print(paste0(as.character(sum(df_orig$chm==0)), " pixels have a height of 0 in the CHM"))
+print("Removing these rows from the training set ... ")
 
-# remove bad bands if this is not done already
+# also RESET THE FACTOR LEVELS FOR DROPPED VALUES 
+df <- df_orig %>% filter(chm>0) %>% droplevels()
 
-# make the ribbon plots, calculate separability metrics (not priority today)
+# Remove bad bands 
 
-# Get the random forest set up 
+# define the "bad bands" wavelength ranges in nanometers, where atmospheric 
+# absorption creates unreliable reflectance values. 
+bad_band_window_1 <- c(1340, 1445)
+bad_band_window_2 <- c(1790, 1955)
+
+# remove the bad bands from the list of wavelengths 
+remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
+                               wavelengths < bad_band_window_1[2]) | 
+                              (wavelengths > bad_band_window_2[1] & 
+                                 wavelengths < bad_band_window_2[2])]
+
+# create a LUT that matches actual wavelength values with the column names,
+# X followed by the rounded wavelength values. Remove the rows that are within the 
+# bad band ranges. 
+wavelength_lut <- data.frame(wavelength = wavelengths,
+                             xwavelength = paste0("X",as.character(round(wavelengths))),
+                             stringsAsFactors = FALSE) %>% 
+  filter(!wavelength %in% remove_bands)
 
 
+taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
 
+
+# filter the data to contain only the features of interest 
+features <- df %>% 
+  select(c(taxonID, chm, slope, aspect, wavelength_lut$xwavelength))
+
+
+# reduce number of samples per species to avoid classifier bias 
+featureSummary <- features %>%
+  group_by(as.character(taxonID)) %>%
+  summarize(total = n()) 
+
+print("number of samples per species class")
+print(featureSummary)
+
+minSamples <- min(featureSummary$total)  
+
+# isolate the samples per species
+taxon1 <- features[features$taxonID==taxonList[1],]
+taxon2 <- features[features$taxonID==taxonList[2],]
+taxon3 <- features[features$taxonID==taxonList[3],]
+taxon4 <- features[features$taxonID==taxonList[4],]
+
+# keep random minSamples of each species; merge
+species1 <- taxon1[sample(nrow(taxon1), minSamples), ]
+species2 <- taxon2[sample(nrow(taxon2), minSamples), ]
+species3 <- taxon3[sample(nrow(taxon3), minSamples), ]
+species4 <- taxon4[sample(nrow(taxon4), minSamples), ]
+
+input <- rbind(species1, species2, species3, species4)
+
+# convert any categorical variables to factors for classifier 
+
+# LOOCV using caret package. define training control
+library(caret)
+train_control <- caret::trainControl(method="LOOCV")
+
+# train the model
+rf <- caret::train(taxonID~., 
+            data=input, 
+            trControl=train_control, 
+            importance = TRUE,
+            method="rf")
+  
