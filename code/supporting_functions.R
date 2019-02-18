@@ -988,7 +988,7 @@ createRibbonPlot <- function(wavelengths, reflFilename){
   df <- as.data.frame(read.csv(reflFilename)) %>% select(-c(X.1,X,Y)) %>% 
     filter(taxonID %in% taxonList)
   # filter the columns to only keep those with spectral reflectance
-  spectra_all <- df %>% select( colnames(spectra)[ grepl( "X", names(spectra))] ) 
+  spectra_all <- df %>% select( colnames(df)[ grepl( "X", names(df))] ) 
   
   # sanity check - check the number of unique entries in the spectra set 
   print(paste("There are", as.character(length(unique(df$indvdID))),
