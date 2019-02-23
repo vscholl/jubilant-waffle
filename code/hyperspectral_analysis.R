@@ -18,6 +18,12 @@ source("supporting_functions.R")
 # code for NEON site 
 site_code <- 'NIWO'
 
+
+
+
+
+
+
 # directory with hyperspectral .h5 files
 h5_dir <- paste0('../data/', site_code, '/hyperspectral/')
 
@@ -710,9 +716,16 @@ writeRaster(h5_rgb,
 # Random Forest Classification --------------------------------------------
 # This part of the script might eventually replace the part of the script above,
 # so that's why there is a lot of repeated code. 
-
-# set the seed for consistent random generation 
-set.seed(14)
+# load necessary R packages 
+library(rhdf5)
+library(rgdal)
+library(raster)
+library(ggplot2)
+library(tidyr)
+library(sf)
+library(dplyr)
+library(data.table) 
+library(stringr) # for str_split function
 
 # set working directory
 setwd("~/github/jubilant-waffle/code/")
@@ -722,6 +735,10 @@ source("supporting_functions.R")
 
 # code for NEON site 
 site_code <- 'NIWO'
+
+# set the seed for consistent random generation 
+set.seed(14)
+
 
 # clip all remote sensing data layers using each of the input shapefile scenarios to test.
 
@@ -769,27 +786,24 @@ shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
 # and the layer name (the filename before the .shp extension) 
 # in a vector for each of the shapefile scenarios. 
 
-# all stem points at NIWO.
-# using the points generated after multi-bole entries have been removed.
-# this is because it becomes a problem when filtering extracted spectra.
-# height is used to decide which rows to delete. The multi-bole entries
-# all have identical height
+# all stem points at NIWO. this includes multi-bole entries, 
+# which result in duplicated spectra. 
 allStems_layer <- c("allStems",
                     "shapefiles_maxDiameter/",
-                    "mapped_stems_woody_multibole_removed") 
+                    "mapped_stems") 
 
-# polygons with max diameter, one generated for each stem point at NIWO.
+# polygons with max crown diameter, one generated for each stem point at NIWO.
 # just as for the "allStems" layer above, the shapfile used here
-# is after multibole entries are removed. 
+# includes multi-bole entries, since this is how the data come when
+# downloaded straight from the data portal. 
 allPolygons_maxDiameter_layer <- c("allPolygons_maxDiameter",
                                    "shapefiles_maxDiameter/",
-                                   "polygons_multibole_removed")
+                                   "polygons_all")
 
-# polygons with half max diameter, one generated for each stem point at NIWO
-# TO DO: Need to run this one again......
+# polygons with half max diameter, one generated for each stem point at NIWO. 
 allPolygons_halfDiameter_layer <- c("allPolygons_halfDiameter",
                                     "shapefiles_halfDiameter/",
-                                    "polygons_multibole_removed")
+                                    "polygons_all")
 
 # neon_veg workflow polygons generated with max diameter 
 neonvegPolygons_maxDiameter_layer <- c("neonvegPolygons_maxDiameter",
@@ -823,7 +837,6 @@ rownames(shapefileLayerNames) <- 1:nrow(shapefileLayerNames)
 # This loops through the specified shapefile layer names,
 # reads each layer, clips the giant stack of data for each tile,
 # and finally saves the extracted data to a CSV file for each tile. 
-
 for(i in 1:nrow(shapefileLayerNames)){ 
   
   print(paste0("Currently extracting features for tree points / polygons in:  ", 
@@ -905,6 +918,44 @@ for(i in 1:nrow(shapefileLayerNames)){
                                                       value=TRUE), 
                                                 pattern="tif$", full.names=TRUE))
     
+    # rgb data has 3 bands. read each one individually 
+    #rgb <- raster::stack(grep(east_north_string, rgb_list, value = TRUE)) # read all 3 bands
+    rgb_red <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 1) 
+    rgb_green <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 2) 
+    rgb_blue <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 3) 
+    
+    # calculate RGB "texture" or statistics: 
+    # aggregate red, green, blue intensity within each coarser grid cell.
+    # The RGB data tile has 10,000 x 10,000 pixels, 10cm spatial resolution. 
+    # All other layers tiles have 1,000 x 1,000 pixels, 1 meter spatial resolution. 
+    # the "fact" parameter of the raster::aggregate function is the number of cells
+    # in each direction (horizontal and vertically) to aggregate across.
+    # since the RGB data has a spatial resolution that is 1/10th of the 
+    # other data layers (10cm compared to 1m), fact should be 10 to produce 
+    # an output raster with 1000 x 1000 pixels. 
+    
+    # mean intensity per 1m x 1m grid cell 
+    rgb_meanR <- raster::aggregate(rgb_red, fact = 10, fun = mean)
+    rgb_meanG <- raster::aggregate(rgb_green, fact = 10, fun = mean)
+    rgb_meanB <- raster::aggregate(rgb_blue, fact = 10, fun = mean)
+    
+    # standard deviation of intensity per 1m x 1m grid cell 
+    rgb_sdR <- raster::aggregate(rgb_red, fact = 10, fun = sd)
+    rgb_sdG <- raster::aggregate(rgb_green, fact = 10, fun = sd)
+    rgb_sdB <- raster::aggregate(rgb_blue, fact = 10, fun = sd)
+    # these raster aggergation function calls are each taking about 4 
+    # minutes to run on my laptop... 
+    
+    # future work: would be awesome to calculate texture features: 
+    # https://cran.r-project.org/web/packages/radiomics/vignettes/TextureAnalysis.html
+    
+    
+    # to confirm the order of the red, green, and blue intensities,
+    # stack all 3 bands into a RasterStack and use the plotRGB function.
+    # the colors appear natural, so r=1, g=2, b=3
+    #rgb_stack <- raster::stack(rgb_red,rgb_green, rgb_blue)
+    #raster::plotRGB(rgb_stack, r = 1, g = 2, b = 3)
+    
     
     # set the raster name for each layer to be simply the name of the data 
     # (i.e. "aspect") as opposed to the full filename 
@@ -931,23 +982,13 @@ for(i in 1:nrow(shapefileLayerNames)){
     names(pixelNumbers) <- "pixelNumber"
     
     
-    # need to figure out which metrics to compute (using which band(s) for the 
-    # RGB data, then re-grid it to have the same spatial resolution as the other 
-    # layers before adding it to the stack. 
-    # The RGB data is 10,000x10,000 pixels. 
-    # All other layers are 1,000x1,000 pixels.
-    #rgb <- raster::stack(grep(east_north_string, rgb_list, value=TRUE)) 
-    # are the bands in R,G,B order? if so, rename accordingly: 
-    #names(rgb) <- c("red","green","blue")
-    
-    
     # now, all of the hyperspectral data files have been read in for the current
     # tile. add each one to the hyperspectral data stack along with the 
     # layer to keep track pixel number within the tile. 
     stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, vegIndices, pixelNumbers)
     
     # TO DO: write the data cube to file to speed up testing??? 
-    
+    #saveRDS(stacked_aop_data, file = rasterstack_filename)
     
     
     # figure out which trees are within the current tile by comparing each
