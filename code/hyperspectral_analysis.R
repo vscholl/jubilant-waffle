@@ -819,12 +819,15 @@ shapefile_dir <- paste0('../data/', site_code, '/shapefiles/')
 # which result in duplicated spectra. 
 allStems_layer <- c("allStems",
                     "shapefiles_maxDiameter/",
-                    "mapped_stems") 
+                    #"mapped_stems") 
+                    "mapped_stems_with_crown_diameter")
 
 # polygons with max crown diameter, one generated for each stem point at NIWO.
 # just as for the "allStems" layer above, the shapfile used here
 # includes multi-bole entries, since this is how the data come when
 # downloaded straight from the data portal. 
+# TO DO: should I only be using the stems that also have diameter and height
+# measurements?????? 
 allPolygons_maxDiameter_layer <- c("allPolygons_maxDiameter",
                                    "shapefiles_maxDiameter/",
                                    "polygons_all")
@@ -1319,155 +1322,14 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
 
+####### Train Random Forest model 
 
-# TO DO: loop through and produce results for all shapefile scenarios 
-#for(i in 1:nrow(shapefileLayerNames)){ }
-  
-
-# filename of current .csv file to read 
-extracted_features_filename <- paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
-                                      shapefileLayerNames$description[1],".csv")
-print("Currently training the random forest with features extracted using:")
-print(extracted_features_filename)
-
-# read the values extracted from the data cube
-df_orig <- read.csv(extracted_features_filename)
-
-
-# Remove any spectra that have a height == 0
-print(paste0(as.character(sum(df_orig$chm==0)), " pixels have a height of 0 in the CHM"))
-print("Removing these rows from the training set ... ")
-
-# also reset the factor levels (in case there are dropped taxonID levels)
-df <- df_orig %>% filter(chm>0) %>% droplevels()
-
-# Remove bad bands 
+library(randomForest) 
 
 # define the "bad bands" wavelength ranges in nanometers, where atmospheric 
 # absorption creates unreliable reflectance values. 
 bad_band_window_1 <- c(1340, 1445)
 bad_band_window_2 <- c(1790, 1955)
-
-# remove the bad bands from the list of wavelengths 
-remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
-                               wavelengths < bad_band_window_1[2]) | 
-                              (wavelengths > bad_band_window_2[1] & 
-                                 wavelengths < bad_band_window_2[2])]
-
-# create a LUT that matches actual wavelength values with the column names,
-# X followed by the rounded wavelength values. Remove the rows that are within the 
-# bad band ranges. 
-wavelength_lut <- data.frame(wavelength = wavelengths,
-                             xwavelength = paste0("X",as.character(round(wavelengths))),
-                             stringsAsFactors = FALSE) %>% 
-  filter(!wavelength %in% remove_bands)
-
-
-taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
-
-
-# filter the data to contain only the features of interest 
-features <- df %>% 
-  dplyr::select(c(taxonID, chm, slope, aspect, wavelength_lut$xwavelength))
-
-# TO DO: normalize the features?!
-
-# reduce number of samples per species to avoid classifier bias 
-featureSummary <- features %>%
-  group_by(as.character(taxonID)) %>%
-  summarize(total = n()) 
-
-print("number of samples per species class")
-print(featureSummary)
-
-minSamples <- min(featureSummary$total)  
-
-# isolate the samples per species
-taxon1 <- features[features$taxonID==taxonList[1],]
-taxon2 <- features[features$taxonID==taxonList[2],]
-taxon3 <- features[features$taxonID==taxonList[3],]
-taxon4 <- features[features$taxonID==taxonList[4],]
-
-# keep random minSamples of each species; merge
-species1 <- taxon1[sample(nrow(taxon1), minSamples), ]
-species2 <- taxon2[sample(nrow(taxon2), minSamples), ]
-species3 <- taxon3[sample(nrow(taxon3), minSamples), ]
-species4 <- taxon4[sample(nrow(taxon4), minSamples), ]
-
-input <- rbind(species1, species2, species3, species4)
-
-# convert any categorical variables to factors for classifier 
-
-# LOOCV using caret package. define training control
-library(caret) # for rf training 
-library(reshape2) #for "melt" function 
-library(randomForest) # for variable importance plot
-train_control <- caret::trainControl(method="LOOCV")
-
-# train the model
-# TO D0: consult this resource https://cran.r-project.org/web/packages/caret/vignettes/caret.html 
-# TO DO: separate a stratified random independent validation set of samples 
-rf <- caret::train(taxonID~., 
-            data=input, 
-            trControl=train_control, 
-            importance = TRUE,
-            method="rf")
-
-
-
-###### Below this line, copied and pasted code from my project, need to adapt it 
-
-
-# keep mtry=2, 
-rf.2 <- rf$pred[seq(1, nrow(rf$pred), 3), ]
-# keep mtry=375
-rf.375 <- rf$pred[seq(3, nrow(rf$pred), 3), ]
-
-# plot confusion matrix 
-cm.2 <- data.frame(reshape2::melt(xtabs( ~ rf.2$pred + rf.2$obs)))
-ggplot(data = cm.2,
-       mapping = aes(x = rf.2.pred,
-                     y = rf.2.obs)) +
-  geom_tile(aes(fill = value)) +
-  geom_text(aes(label = sprintf("%1.0f", value)), vjust = 1) +
-  scale_fill_gradient(low = "gray",
-                      high = "coral1",
-                      trans = "log") +
-  labs(x = "Predicted", y = "Actual") + 
-  theme(legend.position="none")
-
-confusionMatrix(rf.2$pred, rf.2$obs)
-
-# calculate total accuracy, user's, and producers 
-o.accuracy <- rf$results$Accuracy[1]
-
-cm.tab <- xtabs(~ rf.2$pred + rf.2$obs)
-# overall accuracy
-sums <- vector()
-for(i in 1:dim(cm.tab)[1]){
-  sums[i] <- cm.tab[i,i]
-}
-#o.accuracy <- sum(sums)/sum(cm.tab)
-# User accuracy
-u.accuracy <- diag(cm.tab) /rowSums(cm.tab)
-# Producer accuracy
-p.accuracy <- diag(cm.tab)/colSums(cm.tab)
-userProducerAcc <- rbind(u.accuracy, p.accuracy)
-
-# plot variable importance 
-randomForest::varImpPlot(rf$finalModel)
-
-
-
-# TO DO: Try Megan’s RF code  ----------------------------------------------------
-
-set.seed(14)
-
-# read wavelengths if not previously created
-wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
-                                           sep="\n",
-                                           skip = 1,
-                                           col.names = 'wavelength')))
 
 for(i in 1:nrow(shapefileLayerNames)){ 
 
@@ -1481,20 +1343,12 @@ print(extracted_features_filename)
 # read the values extracted from the data cube
 df_orig <- read.csv(extracted_features_filename)
 
-
 # Remove any spectra that have a height == 0
 print(paste0(as.character(sum(df_orig$chm==0)), " pixels have a height of 0 in the CHM"))
 print("Removing these rows from the training set ... ")
 
 # also reset the factor levels (in case there are dropped taxonID levels)
 df <- df_orig %>% filter(chm>0) %>% droplevels()
-
-# Remove bad bands 
-
-# define the "bad bands" wavelength ranges in nanometers, where atmospheric 
-# absorption creates unreliable reflectance values. 
-bad_band_window_1 <- c(1340, 1445)
-bad_band_window_2 <- c(1790, 1955)
 
 # remove the bad bands from the list of wavelengths 
 remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
@@ -1515,8 +1369,30 @@ taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
 
 
 # filter the data to contain only the features of interest 
+featureNames <- c("taxonID", 
+                  wavelength_lut$xwavelength,
+                  "chm", 
+                  "slope", 
+                  "aspect",
+                  "ARVI",
+                  "EVI",
+                  "NDLI",
+                  "NDNI",
+                  "NDVI",
+                  "PRI",
+                  "SAVI",
+                  "rgb_meanR",
+                  "rgb_meanG",
+                  "rgb_meanB",
+                  "rgb_sdR",
+                  "rgb_sdG",
+                  "rgb_sdB",
+                  "rgb_mean_sd_R",
+                  "rgb_mean_sd_G",
+                  "rgb_mean_sd_B")
+
 features <- df %>% 
-  dplyr::select(c(taxonID, chm, slope, aspect, wavelength_lut$xwavelength))
+  dplyr::select(featureNames)
 
 # TO DO: normalize the features?!
 
@@ -1528,36 +1404,36 @@ featureSummary <- features %>%
 print("number of samples per species class")
 print(featureSummary)
 
-minSamples <- min(featureSummary$total)  
-
-print(paste0(as.character(minSamples)," random samples kept per species class to avoid classifier bias"))
+#minSamples <- min(featureSummary$total)  
 
 # isolate the samples per species
-taxon1 <- features[features$taxonID==taxonList[1],]
-taxon2 <- features[features$taxonID==taxonList[2],]
-taxon3 <- features[features$taxonID==taxonList[3],]
-taxon4 <- features[features$taxonID==taxonList[4],]
+#taxon1 <- features[features$taxonID==taxonList[1],]
+#taxon2 <- features[features$taxonID==taxonList[2],]
+#taxon3 <- features[features$taxonID==taxonList[3],]
+#taxon4 <- features[features$taxonID==taxonList[4],]
 
+#print(paste0(as.character(minSamples)," random samples kept per species class to avoid classifier bias"))
+# reduce number of samples per species to avoid classifier bias:  
 # keep random minSamples of each species; merge
-species1 <- taxon1[sample(nrow(taxon1), minSamples), ]
-species2 <- taxon2[sample(nrow(taxon2), minSamples), ]
-species3 <- taxon3[sample(nrow(taxon3), minSamples), ]
-species4 <- taxon4[sample(nrow(taxon4), minSamples), ]
+#taxon1 <- taxon1[sample(nrow(taxon1), minSamples), ]
+#taxon2 <- taxon2[sample(nrow(taxon2), minSamples), ]
+#taxon3 <- taxon3[sample(nrow(taxon3), minSamples), ]
+#taxon4 <- taxon4[sample(nrow(taxon4), minSamples), ]
 
-input <- rbind(species1, species2, species3, species4)
+#input <- rbind(taxon1, taxon2, taxon3, taxon4)
 
-
-fit1 <- randomForest::randomForest(as.factor(input$taxonID) ~ .,
-                     data=input, 
+fit1 <- randomForest::randomForest(as.factor(features$taxonID) ~ .,
+                     data=features, 
                      importance=TRUE, 
-                     ntree=5000) # ntree is number of trees to grow
+                     ntree=500) # ntree is number of trees to grow
 
 print(fit1)
 
 # What variables were important?
 randomForest::varImpPlot(fit1)
 
-# save plot to file? 
+# save plot and RF output to file
+
 
 }
 
