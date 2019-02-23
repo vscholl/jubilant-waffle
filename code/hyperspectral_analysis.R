@@ -693,6 +693,35 @@ writeRaster(h5_rgb,
             overwrite=TRUE)
 
 
+# 
+# TO DO: write the data cube to file to speed up testing??? 
+# check if a "features" directory exists within "data".
+# if not, create it. 
+feature_dir <- paste0("../data/",site_code,"/features/")
+check_create_dir(feature_dir)
+stacked_aop_filename <- paste0(feature_dir, "stacked_aop_data_",
+                               east_north_string, ".rds")
+
+print(paste("stacked_aop_filename: ", stacked_aop_filename))
+
+# check if a .rds file already exists for the current feature data cube
+if (file.exists(stacked_aop_filename)){
+  
+  # if it exists, read that instead of re-generating the same rasterstack.
+  message("reading stacked_aop_data features (already created for current tile)...")
+  # restore / read the rasterstack from file
+  stacked_aop_data <- readRDS(file = stacked_aop_filename)
+  
+} else{
+  
+  # if it doesn't exist, create the features from the aop data to file 
+  message("creating stacked_aop_data features for current tile...")
+  
+  # save the stacked features from the aop data to file 
+  saveRDS(stacked_aop_data, file = stacked_aop_filename)
+}
+
+
 
 
 
@@ -836,7 +865,8 @@ rownames(shapefileLayerNames) <- 1:nrow(shapefileLayerNames)
 
 # This loops through the specified shapefile layer names,
 # reads each layer, clips the giant stack of data for each tile,
-# and finally saves the extracted data to a CSV file for each tile. 
+# and finally saves the extracted data to a CSV file for each tile.
+start_time <- Sys.time()
 for(i in 1:nrow(shapefileLayerNames)){ 
   
   print(paste0("Currently extracting features for tree points / polygons in:  ", 
@@ -918,45 +948,6 @@ for(i in 1:nrow(shapefileLayerNames)){
                                                       value=TRUE), 
                                                 pattern="tif$", full.names=TRUE))
     
-    # rgb data has 3 bands. read each one individually 
-    #rgb <- raster::stack(grep(east_north_string, rgb_list, value = TRUE)) # read all 3 bands
-    rgb_red <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 1) 
-    rgb_green <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 2) 
-    rgb_blue <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 3) 
-    
-    # calculate RGB "texture" or statistics: 
-    # aggregate red, green, blue intensity within each coarser grid cell.
-    # The RGB data tile has 10,000 x 10,000 pixels, 10cm spatial resolution. 
-    # All other layers tiles have 1,000 x 1,000 pixels, 1 meter spatial resolution. 
-    # the "fact" parameter of the raster::aggregate function is the number of cells
-    # in each direction (horizontal and vertically) to aggregate across.
-    # since the RGB data has a spatial resolution that is 1/10th of the 
-    # other data layers (10cm compared to 1m), fact should be 10 to produce 
-    # an output raster with 1000 x 1000 pixels. 
-    
-    # mean intensity per 1m x 1m grid cell 
-    rgb_meanR <- raster::aggregate(rgb_red, fact = 10, fun = mean)
-    rgb_meanG <- raster::aggregate(rgb_green, fact = 10, fun = mean)
-    rgb_meanB <- raster::aggregate(rgb_blue, fact = 10, fun = mean)
-    
-    # standard deviation of intensity per 1m x 1m grid cell 
-    rgb_sdR <- raster::aggregate(rgb_red, fact = 10, fun = sd)
-    rgb_sdG <- raster::aggregate(rgb_green, fact = 10, fun = sd)
-    rgb_sdB <- raster::aggregate(rgb_blue, fact = 10, fun = sd)
-    # these raster aggergation function calls are each taking about 4 
-    # minutes to run on my laptop... 
-    
-    # future work: would be awesome to calculate texture features: 
-    # https://cran.r-project.org/web/packages/radiomics/vignettes/TextureAnalysis.html
-    
-    
-    # to confirm the order of the red, green, and blue intensities,
-    # stack all 3 bands into a RasterStack and use the plotRGB function.
-    # the colors appear natural, so r=1, g=2, b=3
-    #rgb_stack <- raster::stack(rgb_red,rgb_green, rgb_blue)
-    #raster::plotRGB(rgb_stack, r = 1, g = 2, b = 3)
-    
-    
     # set the raster name for each layer to be simply the name of the data 
     # (i.e. "aspect") as opposed to the full filename 
     # (i.e. ""NEON_D13_NIWO_DP3_452000_4431000_aspect")
@@ -966,6 +957,90 @@ for(i in 1:nrow(shapefileLayerNames)){
     # name each of the vegetation index layers based on the last piece of each 
     # respective filename, e.g. "NDVI" and 
     names(vegIndices) <- sapply(stringr::str_split(names(vegIndices),"_"),tail,1)
+    
+    
+
+    # check if RGB features already computed  ---------------------------------
+    rgb_features_filename <- paste0(rgb_dir, "rgb_features_",
+                                   east_north_string, ".rds")
+    
+    print(paste("rgb_features: ", rgb_features_filename))
+    
+    # check if a .rds file already exists for the current feature data cube
+    if (file.exists(rgb_features_filename)){
+      
+      # if it exists, read that instead of re-generating the same rasterstack.
+      message("reading rgb_features (already created for current tile)...")
+      # restore / read the rasterstack from file
+      rgb_features <- readRDS(file = rgb_features_filename)
+      
+    } else{
+      
+      # if it doesn't exist, create the features from the aop data to file 
+      message("creating rgb_features for current tile...")
+      
+      # calculate RGB "texture" or statistics: 
+      # aggregate red, green, blue intensity within each coarser grid cell.
+      # The RGB data tile has 10,000 x 10,000 pixels, 10cm spatial resolution. 
+      # All other layers tiles have 1,000 x 1,000 pixels, 1 meter spatial resolution. 
+      # the "fact" parameter of the raster::aggregate function is the number of cells
+      # in each direction (horizontal and vertically) to aggregate across.
+      # since the RGB data has a spatial resolution that is 1/10th of the 
+      # other data layers (10cm compared to 1m), fact should be 10 to produce 
+      # an output raster with 1000 x 1000 pixels. 
+      
+      # rgb data has 3 bands. read each one individually 
+      #rgb <- raster::stack(grep(east_north_string, rgb_list, value = TRUE)) # read all 3 bands
+      rgb_red <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 1) 
+      rgb_green <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 2) 
+      rgb_blue <- raster::raster(grep(east_north_string, rgb_list, value = TRUE), band = 3) 
+      
+      # mean intensity per 1m x 1m grid cell 
+      rgb_meanR <- raster::aggregate(rgb_red, fact = 10, fun = mean)
+      rgb_meanG <- raster::aggregate(rgb_green, fact = 10, fun = mean)
+      rgb_meanB <- raster::aggregate(rgb_blue, fact = 10, fun = mean)
+      
+      # standard deviation of intensity per 1m x 1m grid cell 
+      rgb_sdR <- raster::aggregate(rgb_red, fact = 10, fun = sd)
+      rgb_sdG <- raster::aggregate(rgb_green, fact = 10, fun = sd)
+      rgb_sdB <- raster::aggregate(rgb_blue, fact = 10, fun = sd)
+      # these raster aggergation function calls are each taking about 4 
+      # minutes to run on my laptop... 
+      
+      # (mean + SD) - (mean - SD)
+      rgb_sd_R <- (rgb_meanR + rgb_sdR) - (rgb_meanR - rgb_sdR)
+      rgb_sd_G <- (rgb_meanG + rgb_sdG) - (rgb_meanG - rgb_sdG)
+      rgb_sd_B <- (rgb_meanB + rgb_sdB) - (rgb_meanB - rgb_sdB)
+      
+      # future work: would be awesome to calculate texture features: 
+      # https://cran.r-project.org/web/packages/radiomics/vignettes/TextureAnalysis.html
+      
+      
+      # to confirm the order of the red, green, and blue intensities,
+      # stack all 3 bands into a RasterStack and use the plotRGB function.
+      # the colors appear natural, so r=1, g=2, b=3
+      #rgb_stack <- raster::stack(rgb_red,rgb_green, rgb_blue)
+      #raster::plotRGB(rgb_stack, r = 1, g = 2, b = 3)
+      
+      # set the names of each layer to reflect the metric it contains
+      names(rgb_meanR) <- "rgb_meanR" # mean intensity 
+      names(rgb_meanG) <- "rgb_meanG"
+      names(rgb_meanB) <- "rgb_meanB"
+      names(rgb_sdR) <- "rgb_sdR"     # standard deviation of intensity 
+      names(rgb_sdG) <- "rgb_sdG"
+      names(rgb_sdB) <- "rgb_sdB"
+      names(rgb_sd_R) <- "rgb_mean_sd_R"
+      names(rgb_sd_G) <- "rgb_mean_sd_G"
+      names(rgb_sd_B) <- "rgb_mean_sd_B"
+      
+      # stack up all the RGB features
+      rgb_features <- raster::stack(rgb_meanR, rgb_meanG, rgb_meanB,
+                                    rgb_sdR, rgb_sdG, rgb_sdB,
+                                    rgb_sd_R, rgb_sd_G, rgb_sd_B)
+
+      # save the stacked features from the aop data to file 
+      saveRDS(rgb_features, file = rgb_features_filename)
+    }
     
     # create the pixel number grid as a layer to add to the data cube. 
     # this one keeps track of individual pixel ID's
@@ -985,10 +1060,8 @@ for(i in 1:nrow(shapefileLayerNames)){
     # now, all of the hyperspectral data files have been read in for the current
     # tile. add each one to the hyperspectral data stack along with the 
     # layer to keep track pixel number within the tile. 
-    stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, vegIndices, pixelNumbers)
-    
-    # TO DO: write the data cube to file to speed up testing??? 
-    #saveRDS(stacked_aop_data, file = rasterstack_filename)
+    stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, vegIndices, 
+                                         rgb_features, pixelNumbers)
     
     
     # figure out which trees are within the current tile by comparing each
@@ -1185,6 +1258,11 @@ for(i in 1:nrow(shapefileLayerNames)){
                         shapefileLayerNames$description[i],".csv"))
   
 }
+
+end_time <- Sys.time()
+elapsed <- end_time - start_time
+print("Elapsed time: ")
+print(elapsed)
 
 
 
