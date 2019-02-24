@@ -1331,6 +1331,11 @@ library(randomForest)
 bad_band_window_1 <- c(1340, 1445)
 bad_band_window_2 <- c(1790, 1955)
 
+# specific string to name a directory to hold classification output files
+outDescription <- "rf_minSamplesPerClass/"
+check_create_dir(paste0(out_dir,outDescription))
+
+start_time <- Sys.time()
 for(i in 1:nrow(shapefileLayerNames)){ 
 
 
@@ -1384,9 +1389,6 @@ featureNames <- c("taxonID",
                   "rgb_meanR",
                   "rgb_meanG",
                   "rgb_meanB",
-                  "rgb_sdR",
-                  "rgb_sdG",
-                  "rgb_sdB",
                   "rgb_mean_sd_R",
                   "rgb_mean_sd_G",
                   "rgb_mean_sd_B")
@@ -1404,38 +1406,47 @@ featureSummary <- features %>%
 print("number of samples per species class")
 print(featureSummary)
 
-#minSamples <- min(featureSummary$total)  
+# TO DO: run all RF models again while reducing the number
+# of samples per class to avoid classifier bias 
+
+minSamples <- min(featureSummary$total)  
 
 # isolate the samples per species
-#taxon1 <- features[features$taxonID==taxonList[1],]
-#taxon2 <- features[features$taxonID==taxonList[2],]
-#taxon3 <- features[features$taxonID==taxonList[3],]
-#taxon4 <- features[features$taxonID==taxonList[4],]
+taxon1 <- features[features$taxonID==taxonList[1],]
+taxon2 <- features[features$taxonID==taxonList[2],]
+taxon3 <- features[features$taxonID==taxonList[3],]
+taxon4 <- features[features$taxonID==taxonList[4],]
 
-#print(paste0(as.character(minSamples)," random samples kept per species class to avoid classifier bias"))
+print(paste0(as.character(minSamples)," random samples kept per species class to avoid classifier bias"))
 # reduce number of samples per species to avoid classifier bias:  
 # keep random minSamples of each species; merge
-#taxon1 <- taxon1[sample(nrow(taxon1), minSamples), ]
-#taxon2 <- taxon2[sample(nrow(taxon2), minSamples), ]
-#taxon3 <- taxon3[sample(nrow(taxon3), minSamples), ]
-#taxon4 <- taxon4[sample(nrow(taxon4), minSamples), ]
+taxon1 <- taxon1[sample(nrow(taxon1), minSamples), ]
+taxon2 <- taxon2[sample(nrow(taxon2), minSamples), ]
+taxon3 <- taxon3[sample(nrow(taxon3), minSamples), ]
+taxon4 <- taxon4[sample(nrow(taxon4), minSamples), ]
 
-#input <- rbind(taxon1, taxon2, taxon3, taxon4)
+features <- rbind(taxon1, taxon2, taxon3, taxon4)
 
-fit1 <- randomForest::randomForest(as.factor(features$taxonID) ~ .,
+
+
+# TO DO: increase number of trees 
+rf_model <- randomForest::randomForest(as.factor(features$taxonID) ~ .,
                      data=features, 
                      importance=TRUE, 
                      ntree=500) # ntree is number of trees to grow
 
-print(fit1)
+print(rf_model)
 
 # What variables were important?
-randomForest::varImpPlot(fit1)
+randomForest::varImpPlot(rf_model)
 
-# save plot and RF output to file
-
+# TO DO: save plot and RF output to file
+save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
+                       shapefileLayerNames$description[i],".RData"))
 
 }
-
+end_time <- Sys.time()
+print("Elapsed time: ")
+print(end_time-start_time)
 
   
