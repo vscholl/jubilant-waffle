@@ -1331,49 +1331,12 @@ library(randomForest)
 bad_band_window_1 <- c(1340, 1445)
 bad_band_window_2 <- c(1790, 1955)
 
-# specific string to name a directory to hold classification output files
-outDescription <- "rf_minSamplesPerClass/"
-check_create_dir(paste0(out_dir,outDescription))
-
-start_time <- Sys.time()
-for(i in 1:nrow(shapefileLayerNames)){ 
-
-
-# filename of current .csv file to read 
-extracted_features_filename <- paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
-                                      shapefileLayerNames$description[i],".csv")
-print("Currently training the random forest with features extracted using:")
-print(extracted_features_filename)
-
-# read the values extracted from the data cube
-df_orig <- read.csv(extracted_features_filename)
-
-# Remove any spectra that have a height == 0
-print(paste0(as.character(sum(df_orig$chm==0)), " pixels have a height of 0 in the CHM"))
-print("Removing these rows from the training set ... ")
-
-# also reset the factor levels (in case there are dropped taxonID levels)
-df <- df_orig %>% filter(chm>0) %>% droplevels()
-
-# remove the bad bands from the list of wavelengths 
-remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
-                               wavelengths < bad_band_window_1[2]) | 
-                              (wavelengths > bad_band_window_2[1] & 
-                                 wavelengths < bad_band_window_2[2])]
-
-# create a LUT that matches actual wavelength values with the column names,
-# X followed by the rounded wavelength values. Remove the rows that are within the 
-# bad band ranges. 
-wavelength_lut <- data.frame(wavelength = wavelengths,
-                             xwavelength = paste0("X",as.character(round(wavelengths))),
-                             stringsAsFactors = FALSE) %>% 
-  filter(!wavelength %in% remove_bands)
-
-
+# taxon ID's to predict
 taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
 
-
-# filter the data to contain only the features of interest 
+# features to use in the RF models.
+# this list is used to filter the columns of the data frame,
+# to remove the ones containing other metadata per tree from the model. 
 featureNames <- c("taxonID", 
                   wavelength_lut$xwavelength,
                   "chm", 
@@ -1393,58 +1356,219 @@ featureNames <- c("taxonID",
                   "rgb_mean_sd_G",
                   "rgb_mean_sd_B")
 
-features <- df %>% 
-  dplyr::select(featureNames)
-
-# TO DO: normalize the features?!
-
-# reduce number of samples per species to avoid classifier bias 
-featureSummary <- features %>%
-  group_by(as.character(taxonID)) %>%
-  summarize(total = n()) 
-
-print("number of samples per species class")
-print(featureSummary)
-
-# TO DO: run all RF models again while reducing the number
-# of samples per class to avoid classifier bias 
-
-minSamples <- min(featureSummary$total)  
-
-# isolate the samples per species
-taxon1 <- features[features$taxonID==taxonList[1],]
-taxon2 <- features[features$taxonID==taxonList[2],]
-taxon3 <- features[features$taxonID==taxonList[3],]
-taxon4 <- features[features$taxonID==taxonList[4],]
-
-print(paste0(as.character(minSamples)," random samples kept per species class to avoid classifier bias"))
-# reduce number of samples per species to avoid classifier bias:  
-# keep random minSamples of each species; merge
-taxon1 <- taxon1[sample(nrow(taxon1), minSamples), ]
-taxon2 <- taxon2[sample(nrow(taxon2), minSamples), ]
-taxon3 <- taxon3[sample(nrow(taxon3), minSamples), ]
-taxon4 <- taxon4[sample(nrow(taxon4), minSamples), ]
-
-features <- rbind(taxon1, taxon2, taxon3, taxon4)
 
 
 
-# TO DO: increase number of trees 
-rf_model <- randomForest::randomForest(as.factor(features$taxonID) ~ .,
-                     data=features, 
-                     importance=TRUE, 
-                     ntree=500) # ntree is number of trees to grow
+# specific string to name a directory to hold classification output files
+outDescription <- "rf_allSamplesPerClass_ntree500_validationSet/"
+outDescription <- "rf_allSamplesPerClass_ntree500/"
+check_create_dir(paste0(out_dir,outDescription))
 
-print(rf_model)
+# RF tuning parameter, number of trees to grow. deafualt value 500
+ntree <- 500
 
-# What variables were important?
-randomForest::varImpPlot(rf_model)
+# boolean variable. if TRUE, select random minSamples per class to reduce bias
+randomMinSamples <- FALSE
 
-# TO DO: save plot and RF output to file
-save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
-                       shapefileLayerNames$description[i],".RData"))
+# boolean variable. if TRUE, keep separate set for validation
+independentValidationSet <- FALSE 
+# randomly select this amount of data for training, use the rest for validation
+percentTrain <- 0.8 
 
+# open a text file to record the output results 
+rf_output_file <- file(paste0(out_dir,outDescription,
+                                  "rf_model_summaries.txt"), "w")
+
+
+# start the timer
+start_time <- Sys.time()
+
+# loop through all shapefile sets 
+for(i in 1:nrow(shapefileLayerNames)){ 
+  
+  # filename of current .csv file to read 
+  extracted_features_filename <- paste0(out_dir, site_code, 
+                                        "_spectral_reflectance_ALL_",
+                                        shapefileLayerNames$description[i],
+                                        ".csv")
+  print("Currently training the random forest with features extracted using:")
+  print(extracted_features_filename)
+  
+  # read the values extracted from the data cube
+  df_orig <- read.csv(extracted_features_filename)
+  
+  # Remove any spectra that have a height == 0
+  print(paste0(as.character(sum(df_orig$chm==0)), 
+               " pixels have a height of 0 in the CHM"))
+  print("Removing these rows from the training set ... ")
+  
+  # also reset the factor levels (in case there are dropped taxonID levels)
+  df <- df_orig %>% filter(chm>0) %>% droplevels()
+  
+  # remove the bad bands from the list of wavelengths 
+  remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
+                                 wavelengths < bad_band_window_1[2]) | 
+                                (wavelengths > bad_band_window_2[1] & 
+                                   wavelengths < bad_band_window_2[2])]
+  
+  # create a LUT that matches actual wavelength values with the column names,
+  # X followed by the rounded wavelength values. Remove the rows that are 
+  # within thebad band ranges. 
+  wavelength_lut <- data.frame(wavelength = wavelengths,
+                               xwavelength = paste0("X", 
+                                                    as.character(round(wavelengths))),
+                               stringsAsFactors = FALSE) %>% 
+    filter(!wavelength %in% remove_bands)
+  
+  
+  # filter the data to contain only the features of interest 
+  features <- df %>% 
+    dplyr::select(featureNames)
+  
+  # TO DO: normalize the features?!
+  
+  # count the number of samples per species 
+  featureSummary <- features %>%
+    group_by(as.character(taxonID)) %>%
+    summarize(total = n()) 
+  
+  print("number of samples per species class")
+  print(featureSummary)
+  
+  # randomly select <percentTrain> of data for training,
+  # use the remaining samples for validation
+  if(independentValidationSet){
+    train <- sample(nrow(features), percentTrain*nrow(features), replace = FALSE)
+    trainSet <- features[train,]
+    validationSet <- features[-train,]
+    summary(trainSet)
+    summary(validationSet)
+    features <- trainSet
+  }
+  
+  if(randomMinSamples){
+    # reduce number of samples per species to avoid classifier bias
+    
+    # count the minimum number of samples for a single class
+    minSamples <- min(featureSummary$total)  
+    print(paste0("Randomly selecting ",
+                 as.character(minSamples),
+                 " samples per species class to avoid classifier bias"))
+    
+    # isolate the samples per species
+    taxon1 <- features[features$taxonID==taxonList[1],]
+    taxon2 <- features[features$taxonID==taxonList[2],]
+    taxon3 <- features[features$taxonID==taxonList[3],]
+    taxon4 <- features[features$taxonID==taxonList[4],]
+    
+    # keep random minSamples of each species; merge
+    taxon1 <- taxon1[sample(nrow(taxon1), minSamples), ]
+    taxon2 <- taxon2[sample(nrow(taxon2), minSamples), ]
+    taxon3 <- taxon3[sample(nrow(taxon3), minSamples), ]
+    taxon4 <- taxon4[sample(nrow(taxon4), minSamples), ]
+    
+    features <- rbind(taxon1, taxon2, taxon3, taxon4)
+    
+  } else{
+    print("Using all samples per class")
+  }
+  
+  
+  # train the RF model using the training set
+  set.seed(104)
+  rf_model <- randomForest::randomForest(as.factor(features$taxonID) ~ .,
+                                         data=features, 
+                                         importance=TRUE, 
+                                         ntree=ntree) # ntree is number of trees to grow
+  
+  print(rf_model)
+  
+  # plot error as a function of ntrees
+  plot(rf_model)
+  legend("topright", colnames(rf_model$err.rate),col=1:5,cex=0.8,fill=1:5)
+  
+  
+  # What variables were important?
+  
+  # save varImpPlot to image file 
+  varImpFilename <- paste0(out_dir, outDescription,"varImpPlot_",shapefileLayerNames$description[i],".png")
+  png(filename = varImpFilename)
+  # make varImpPlot
+  randomForest::varImpPlot(rf_model,
+                           main = shapefileLayerNames$description[i])
+  dev.off()
+  
+  # save RF model to file 
+  save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
+                               shapefileLayerNames$description[i],".RData"))
+  
+  # use the model to predict the species for the training set 
+  predTrain <- predict(rf_model, features, type = "class")
+  
+  # Checking classification accuracy
+  confusionTable <- table(predTrain, features$taxonID)
+  print(confusionTable)
+  
+  # print overall accuracy
+  print(paste0("overall accuracy predicting train set: ",
+               as.character(mean(predTrain == features$taxonID))))
+  
+  # predict species ID for validation set 
+  if(independentValidationSet){
+    predValidation <- predict(rf_model, validationSet, type = "class")
+    confusionTable <- table(predValidation, validationSet$taxonID)
+    print(confusionTable)
+    print(paste0("overall accuracy predicting validation set: ",
+                 as.character(mean(predValidation == validationSet$taxonID))))
+  }
+  
+  
+  # write all relevant information to the textfile: 
+  # shapefile name
+  write(shapefileLayerNames$description[i], rf_output_file, append=TRUE)
+  write("\n", rf_output_file, append=TRUE) #newline
+  
+  # number of samples per class
+  featureSummary <- data.frame(featureSummary)
+  colnames(featureSummary) <- c("taxonID","numberOfSamples")
+  capture.output(featureSummary, file = rf_output_file, append=TRUE)
+  
+  # RF model summary, OOB error rate 
+  capture.output(rf_model, file = rf_output_file, append=TRUE)
+  
+  # variable importance, ordered from highest MDGini to lowest
+  write("\n20 most important variables, ranked by Mean Decrease Accuracy: \n", 
+        rf_output_file, append=TRUE)
+  varImp <- as.data.frame(rf_model$importance[order(rf_model$importance[,"MeanDecreaseGini"],decreasing = TRUE),])
+  colnames(varImp)[colnames(varImp) == 'MeanDecreaseAccuracy'] <- 'MDAcc'
+  colnames(varImp)[colnames(varImp) == 'MeanDecreaseGini'] <- 'MDGini'
+  capture.output(varImp[1:20,],
+              file = rf_output_file,
+              #sep = "\t",
+              #row.names=TRUE,
+              #col.names = TRUE,
+              append=TRUE)
+  
+  write("\n", rf_output_file, append=TRUE)
+  
+  # variable importance, ordered from highest MDAcc to lowest
+  write("\n20 most important variables, ranked by Mean Decrease Gini: \n", 
+        rf_output_file, append=TRUE)
+  varImp <- varImp[order(varImp$MDAcc, decreasing=TRUE),]
+  capture.output(varImp[1:20,],
+                 file = rf_output_file,
+                 #sep = "\t",
+                 #row.names=TRUE,
+                 #col.names = TRUE,
+                 append=TRUE)
+  
+  write("\n\n------------------------------\n\n", rf_output_file, append=TRUE)
+  
 }
+
+# close the text file
+close(rf_output_file)
+
 end_time <- Sys.time()
 print("Elapsed time: ")
 print(end_time-start_time)
