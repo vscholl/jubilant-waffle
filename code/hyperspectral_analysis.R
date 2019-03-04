@@ -499,8 +499,22 @@ createRibbonPlot(wavelengths, extracted_features_filename)
 
 
 #https://www.rdocumentation.org/packages/varSel/versions/0.1/topics/JMdist
+library(varSel)
 
-varSel::JMdist
+# create a data frame where each row is a reflectance spectrum and each 
+# coloumn is a wavelength
+X <- features %>% dplyr::select(c(wavelength_lut$xwavelength))
+  
+# a column vector of the lables. length(g) is equal to nrow(X).
+g <- features$taxonID
+
+sep <- varSel::JMdist(g,X)
+
+
+
+
+
+
 
 
 
