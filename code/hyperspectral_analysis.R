@@ -504,9 +504,16 @@ library(varSel)
 # create a data frame where each row is a reflectance spectrum and each 
 # coloumn is a wavelength
 X <- features %>% dplyr::select(c(wavelength_lut$xwavelength))
+X <- X[,1:100]
   
 # a column vector of the lables. length(g) is equal to nrow(X).
-g <- features$taxonID
+classes <- features$taxonID
+classNumbers <- matrix(nrow = length(classes))
+classNumbers[classes == "ABLAL"] <- 1
+classNumbers[classes == "PICOL"] <- 2
+classNumbers[classes == "PIEN"] <- 3
+classNumbers[classes == "PIFL2"] <- 4
+g <- classNumbers
 
 sep <- varSel::JMdist(g,X)
 
@@ -515,8 +522,121 @@ sep <- varSel::JMdist(g,X)
 
 
 
+# Jeffries-Matusita distance ----------------------------------------------
+
+# https://stats.stackexchange.com/questions/106325/jeffries-matusita-distance-for-14-variables
+
+# Compute the Mahalanobis distance between two vectors.
+mahalanobis <- function(m1, m2, sigma) {m <- m1 - m2; m %*% solve(sigma, m)}
+
+# Compute the Bhattacharyya distance between two multivariate normal distributions
+# given by their means and covariance matrices.
+bhattacharyya <- function(m1, s1, m2, s2) {
+  d <- function(u) determinant(u, logarithm=TRUE)$modulus # Log determinant of matrix u
+  s <- (s1 + s2)/2                                        # mean covariance matrix
+  mahalanobis(m1, m2, s)/8 + (d(s) - d(s1)/2 - d(s2)/2)/2
+}
+
+# Re-express the Bhattacharyya distance as the Jeffries-Matusita distance.
+# Values range from 0 (poor separability) to 2 (great separability)
+jeffries.matusita <- function(...) 2*(1-exp(-bhattacharyya(...)))
 
 
+
+#------------------------------------------------------------------------------------#
+# Generate sets of sample data for d bands aggregated into classes.
+d <- 14                          # Number of bands
+n <- rep(1000, 5)                # Class pixel counts
+n.class <- length(n)             # Number of classes
+require(MASS)                    # For generating multivariate normals
+set.seed(17)                     # Allows reproducible results
+
+# Create random mean vectors for the classes
+mu <- round(matrix(rnorm(d*n.class, 128, 1), ncol=n.class, byrow=TRUE), 0)
+# Initialize the data structure {x, classes}
+x <- matrix(double(), ncol=d, nrow=0)
+classes <- integer()
+# Generate the random data
+for (i in 1:n.class) {
+  # Create a random valid covariance matrix for this class
+  f <- svd(matrix(rnorm(d^2), ncol=d))
+  sigma <- t(f$v) %*% diag(rep(10, d)) %*% f$v
+  # Generate d-variate normals
+  x <- rbind(x, mvrnorm(n[i], mu[, i], sigma))
+  classes <- c(classes, rep(i, n[i]))
+}
+# Given a set of bands (as the columns of x) and a grouping variable in `class`,
+# compute the class means and covariance matrices (the "signatures").
+classes.stats <- by(x, classes, function(y) list(mean=apply(y, 2, mean), cov=cov(y)))
+
+# Compute the J-M distances between the classes.
+distances <- matrix(0.0, n.class, n.class)
+for (i in 2:n.class) {
+  m1 <- classes.stats[[i]]$mean; s1 <- classes.stats[[i]]$cov
+  for (j in 1:(i-1)) {
+    m2 <- classes.stats[[j]]$mean; s2 <- classes.stats[[j]]$cov
+    distances[i,j] <- distances[j,i] <- jeffries.matusita(m1,s1,m2,s2)
+  }
+}
+print(distances)
+#------------------------------------------------------------------------------------#
+
+
+
+# Jeffries-Matusita distance using NIWO spectra ---------------------------
+
+# spectral data with reflectance per wavelength (column), with each
+# row being a different pixel
+x <- features %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
+
+# class labels for each pixel. taxonIDs are originally factors.
+# reclassify them as numbers. 
+classes <- features$taxonID
+classNumbers <- matrix(nrow = length(classes))
+classNumbers[classes == "ABLAL"] <- 1
+classNumbers[classes == "PICOL"] <- 2
+classNumbers[classes == "PIEN"] <- 3
+classNumbers[classes == "PIFL2"] <- 4
+classes <- classNumbers
+
+# number of unique classes 
+n.class <- length(unique(classes))
+
+# calculate the mean and covariance for all spectra within each class 
+classes.stats <- by(x, classes, function(y) list(mean=apply(y, 2, mean), cov=cov(y)))
+
+# Compute the J-M distances between the classes.
+distances <- matrix(0.0, n.class, n.class)
+for (i in 2:n.class) {
+  m1 <- classes.stats[[i]]$mean; s1 <- classes.stats[[i]]$cov
+  for (j in 1:(i-1)) {
+    m2 <- classes.stats[[j]]$mean; s2 <- classes.stats[[j]]$cov
+    distances[i,j] <- distances[j,i] <- jeffries.matusita(m1,s1,m2,s2)
+  }
+}
+print(distances)
+
+
+
+
+# Boxplots of variables per species ---------------------------------------
+
+ggplot(data = features, aes(x = taxonID)) +
+  geom_boxplot(data = features, aes(y = PRI))
+
+
+
+
+
+# PCA of hyperspectral reflectance  ---------------------------------------
+# Followed the Data Camp tutorial here: https://www.datacamp.com/community/tutorials/pca-analysis-r 
+
+# get the hyperspectral reflectance data 
+hs <- features %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
+# calculate PCA
+hs_pca <- stats::prcomp(hs, center = TRUE, scale. = TRUE)
+# 
+summary(hs_pca)
 
 
 
@@ -548,16 +668,6 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
-
-# define the "bad bands" wavelength ranges in nanometers, where atmospheric 
-# absorption creates unreliable reflectance values. 
-bad_band_window_1 <- c(1340, 1445)
-bad_band_window_2 <- c(1790, 1955)
-
-# taxon ID's to predict
-taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
-
-
 
 # specific string to name a directory to hold classification output files
 #outDescription <- "rf_allSamplesPerClass_ntree500_validationSet/"
