@@ -755,7 +755,8 @@ outDescription <- "rf_allSamplesPerClass_ntree500_pcaInsteadOfWavelengths/"
 outDescription <- "rf_allSamplesPerClass_ntree500_pca4InsteadOfWavelengths_keep10MostImpVar/"
 outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths_keep10MostImpVar/"
 outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths/"
-outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths/"
+outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths/" 
+
 
 check_create_dir(paste0(out_dir,outDescription))
 
