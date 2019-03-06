@@ -628,19 +628,6 @@ ggplot(data = features, aes(x = taxonID)) +
 
 
 
-# PCA of hyperspectral reflectance  ---------------------------------------
-# Followed the Data Camp tutorial here: https://www.datacamp.com/community/tutorials/pca-analysis-r 
-
-# get the hyperspectral reflectance data 
-hs <- features %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
-# calculate PCA
-hs_pca <- stats::prcomp(hs, center = TRUE, scale. = TRUE)
-# 
-summary(hs_pca)
-
-
-
-
 # count number of polygons and pixels per shapefile scenario ------------------
 for(i in 1:nrow(shapefileLayerNames)){
   print(i)
@@ -673,12 +660,12 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 #outDescription <- "rf_allSamplesPerClass_ntree500_validationSet/"
 outDescription <- "rf_allSamplesPerClass_ntree500/"
 outDescription <- "rf_allSamplesPerClass_ntree1000/"
-#outDescription <- "rf_minSamplesPerClass_ntree500/"
+outDescription <- "rf_allSamplesPerClass_ntree500_pcaInsteadOfWavelengths/"
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
 ntree <- 500
-ntree <- 1000
+#ntree <- 1000
 
 # boolean variable. if TRUE, select random minSamples per class to reduce bias
 randomMinSamples <- FALSE
@@ -687,6 +674,8 @@ randomMinSamples <- FALSE
 independentValidationSet <- FALSE 
 # randomly select this amount of data for training, use the rest for validation
 percentTrain <- 0.8 
+
+pca_instead_of_wavelengths <- TRUE
 
 # open a text file to record the output results 
 rf_output_file <- file(paste0(out_dir,outDescription,
@@ -759,7 +748,22 @@ for(i in 1:nrow(shapefileLayerNames)){
   features <- df %>% 
     dplyr::select(featureNames)
   
-  # TO DO: normalize the features?!
+  # testing whether PCA yields better accuracy than individual wavelength reflectance data
+  if(pca_instead_of_wavelengths == TRUE){
+    
+    # remove the individual spectral reflectance bands from the training data
+    features <- features %>% dplyr::select(-c(wavelength_lut$xwavelength))
+    
+    # PCA: calculate Principal Components 
+    hs <- df %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
+    hs_pca <- stats::prcomp(hs, center = TRUE, scale. = TRUE)
+    features <- cbind(features, hs_pca$x[,1:4]) # add first n PCs to features data frame
+    
+  }
+  
+  print("Features used in current RF model: ")
+  print(colnames(features))
+  
   
   # count the number of samples per species 
   featureSummary <- features %>%
@@ -809,13 +813,29 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   
   # train the RF model using the training set
+  rf_startTime <- Sys.time()
   set.seed(104)
   rf_model <- randomForest::randomForest(as.factor(features$taxonID) ~ .,
                                          data=features, 
                                          importance=TRUE, 
                                          ntree=ntree) # ntree is number of trees to grow
+  print("randomForest time elapsed for model training: ")
+  print(Sys.time()-rf_startTime)
   
   print(rf_model)
+  
+  
+  # Parallel randomForest
+  #library(foreach)
+  #rf_startTime <- Sys.time()
+  #test <- foreach(ntree=rep(500, 6), .combine=randomForest::combine,
+  #              .multicombine=TRUE, .packages='randomForest') %dopar% {
+  #                randomForest(as.factor(features$taxonID) ~ .,
+  #                data=features, importance=TRUE, ntree=ntree)
+  #              }
+  #print("randomForest time elapsed: ")
+  #print(Sys.time()-rf_startTime)
+  
   
   # plot error as a function of ntrees
   #plot(rf_model)
@@ -867,6 +887,10 @@ for(i in 1:nrow(shapefileLayerNames)){
   colnames(featureSummary) <- c("taxonID","numberOfSamples")
   capture.output(featureSummary, file = rf_output_file, append=TRUE)
   
+  # features used to describe each sample (pixel)
+  write("\n", "descriptive features used to train this model: ", append=TRUE) #newline
+  write(colnames(features), append=TRUE)
+  
   # RF model summary, OOB error rate 
   capture.output(rf_model, file = rf_output_file, append=TRUE)
   
@@ -895,6 +919,10 @@ for(i in 1:nrow(shapefileLayerNames)){
                  #row.names=TRUE,
                  #col.names = TRUE,
                  append=TRUE)
+  
+  # TO DO: keep the n most important variables and run the classification again? 
+  
+  
   
   write("\n\n------------------------------\n\n", rf_output_file, append=TRUE)
   
