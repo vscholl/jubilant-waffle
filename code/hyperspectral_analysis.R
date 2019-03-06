@@ -619,7 +619,7 @@ print(distances)
 
 
 
-# Boxplots of variables per species ---------------------------------------
+# Interspecies comparison Boxplots of variables per species -------------------
 
 ggplot(data = features, aes(x = taxonID)) +
   geom_boxplot(data = features, aes(y = PRI))
@@ -661,11 +661,14 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 outDescription <- "rf_allSamplesPerClass_ntree500/"
 outDescription <- "rf_allSamplesPerClass_ntree1000/"
 outDescription <- "rf_allSamplesPerClass_ntree500_pcaInsteadOfWavelengths/"
+outDescription <- "rf_allSamplesPerClass_ntree500_pca4InsteadOfWavelengths_keep10MostImpVar/"
+outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths_keep10MostImpVar/"
+
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
-ntree <- 500
-#ntree <- 1000
+#ntree <- 500
+ntree <- 2000 # using PCA the run time is significantly cut down 
 
 # boolean variable. if TRUE, select random minSamples per class to reduce bias
 randomMinSamples <- FALSE
@@ -675,11 +678,20 @@ independentValidationSet <- FALSE
 # randomly select this amount of data for training, use the rest for validation
 percentTrain <- 0.8 
 
-pca_instead_of_wavelengths <- TRUE
+pcaInsteadOfWavelengths <- TRUE
+nPCs <- 2 # number of PCAs to keep 
+
+keepMostImpVar <- TRUE
 
 # open a text file to record the output results 
 rf_output_file <- file(paste0(out_dir,outDescription,
                                   "rf_model_summaries.txt"), "w")
+
+# create an empty list to summarise the model performances
+# --> how to access the OOD error rate from the randomForest output object???!?
+#modelComparison <- data.frame(matrix(ncol = 3, nrow = nrow(shapefileLayerNames)))
+#x <- c("OOB-error", "OveralAccuracy", "rankOA")
+#colnames(modelComparison) <- x
 
 
 # start the timer
@@ -749,7 +761,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     dplyr::select(featureNames)
   
   # testing whether PCA yields better accuracy than individual wavelength reflectance data
-  if(pca_instead_of_wavelengths == TRUE){
+  if(pcaInsteadOfWavelengths == TRUE){
     
     # remove the individual spectral reflectance bands from the training data
     features <- features %>% dplyr::select(-c(wavelength_lut$xwavelength))
@@ -757,7 +769,8 @@ for(i in 1:nrow(shapefileLayerNames)){
     # PCA: calculate Principal Components 
     hs <- df %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
     hs_pca <- stats::prcomp(hs, center = TRUE, scale. = TRUE)
-    features <- cbind(features, hs_pca$x[,1:4]) # add first n PCs to features data frame
+    summary(hs_pca)
+    features <- cbind(features, hs_pca$x[,1:nPCs]) # add first n PCs to features data frame
     
   }
   
@@ -842,15 +855,15 @@ for(i in 1:nrow(shapefileLayerNames)){
   #legend("topright", colnames(rf_model$err.rate),col=1:5,cex=0.8,fill=1:5)
   
   
-  # What variables were important?
+  # What variables were important? --> Consult the variable importance plot. 
   
-  # save varImpPlot to image file 
+  # save varImpPlot to image file. create a filename and png object.  
   varImpFilename <- paste0(out_dir, outDescription,"varImpPlot_",shapefileLayerNames$description[i],".png")
   png(filename = varImpFilename)
   # make varImpPlot
   randomForest::varImpPlot(rf_model,
                            main = shapefileLayerNames$description[i])
-  dev.off()
+  dev.off() # saves the plot to the image filename  
   
   # save RF model to file 
   save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
@@ -864,6 +877,7 @@ for(i in 1:nrow(shapefileLayerNames)){
   print(confusionTable)
   
   # print overall accuracy
+  # TO DO: modify this for the independent validation set
   print(paste0("overall accuracy predicting train set: ",
                as.character(mean(predTrain == features$taxonID))))
   
@@ -888,14 +902,14 @@ for(i in 1:nrow(shapefileLayerNames)){
   capture.output(featureSummary, file = rf_output_file, append=TRUE)
   
   # features used to describe each sample (pixel)
-  write("\n", "descriptive features used to train this model: ", append=TRUE) #newline
-  write(colnames(features), append=TRUE)
+  write("\n", "descriptive features used to train this model: ", rf_output_file, append=TRUE) #newline
+  write(colnames(features), rf_output_file, append=TRUE)
   
   # RF model summary, OOB error rate 
   capture.output(rf_model, file = rf_output_file, append=TRUE)
   
   # variable importance, ordered from highest MDGini to lowest
-  write("\n20 most important variables, ranked by Mean Decrease Accuracy: \n", 
+  write("\n20 most important variables, ranked by Mean Decrease Gini: \n", 
         rf_output_file, append=TRUE)
   varImp <- as.data.frame(rf_model$importance[order(rf_model$importance[,"MeanDecreaseGini"],decreasing = TRUE),])
   colnames(varImp)[colnames(varImp) == 'MeanDecreaseAccuracy'] <- 'MDAcc'
@@ -909,8 +923,8 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   write("\n", rf_output_file, append=TRUE)
   
-  # variable importance, ordered from highest MDAcc to lowest
-  write("\n20 most important variables, ranked by Mean Decrease Gini: \n", 
+  # variable importance, ordered from highest MDA to lowest
+  write("\n20 most important variables, ranked by MDA: \n", 
         rf_output_file, append=TRUE)
   varImp <- varImp[order(varImp$MDAcc, decreasing=TRUE),]
   capture.output(varImp[1:20,],
@@ -920,8 +934,23 @@ for(i in 1:nrow(shapefileLayerNames)){
                  #col.names = TRUE,
                  append=TRUE)
   
-  # TO DO: keep the n most important variables and run the classification again? 
+  print("Top 10 most important variables ranked by MDA")
+  print(rownames(varImp[1:10,])) 
   
+  # TO DO: keep the n most important variables and run the classification again?
+  print("KEEPING TOP 10 VARIABLES AND RUNNING RF AGAIN ")
+  if (keepMostImpVar == TRUE) {
+    mostImpVar <- rownames(varImp[1:5,])
+    features2 <- features %>% dplyr::select(taxonID, c(mostImpVar))
+    # run RF model again, this time with reduced features
+    set.seed(104)
+    rf_model2 <- randomForest::randomForest(as.factor(features2$taxonID) ~ .,
+                                           data=features2,
+                                           importance=TRUE,
+                                           ntree=ntree) # ntree is number of trees to grow
+    print(rf_model2)
+  }
+  # initial test shows that this does not significantly improve the accuracy
   
   
   write("\n\n------------------------------\n\n", rf_output_file, append=TRUE)
