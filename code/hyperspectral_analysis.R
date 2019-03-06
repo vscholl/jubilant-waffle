@@ -902,7 +902,7 @@ for(i in 1:nrow(shapefileLayerNames)){
   capture.output(featureSummary, file = rf_output_file, append=TRUE)
   
   # features used to describe each sample (pixel)
-  write("\n", "descriptive features used to train this model: ", rf_output_file, append=TRUE) #newline
+  write("\ndescriptive features used to train this model: ", rf_output_file, append=TRUE) #newline
   write(colnames(features), rf_output_file, append=TRUE)
   
   # RF model summary, OOB error rate 
@@ -937,19 +937,19 @@ for(i in 1:nrow(shapefileLayerNames)){
   print("Top 10 most important variables ranked by MDA")
   print(rownames(varImp[1:10,])) 
   
-  # TO DO: keep the n most important variables and run the classification again?
-  print("KEEPING TOP 10 VARIABLES AND RUNNING RF AGAIN ")
-  if (keepMostImpVar == TRUE) {
-    mostImpVar <- rownames(varImp[1:5,])
-    features2 <- features %>% dplyr::select(taxonID, c(mostImpVar))
-    # run RF model again, this time with reduced features
-    set.seed(104)
-    rf_model2 <- randomForest::randomForest(as.factor(features2$taxonID) ~ .,
-                                           data=features2,
-                                           importance=TRUE,
-                                           ntree=ntree) # ntree is number of trees to grow
-    print(rf_model2)
-  }
+  # # TO DO: keep the n most important variables and run the classification again?
+  # print("KEEPING TOP 5 VARIABLES AND RUNNING RF AGAIN ")
+  # if (keepMostImpVar == TRUE) {
+  #   mostImpVar <- rownames(varImp[1:5,])
+  #   features2 <- features %>% dplyr::select(taxonID, c(mostImpVar))
+  #   # run RF model again, this time with reduced features
+  #   set.seed(104)
+  #   rf_model2 <- randomForest::randomForest(as.factor(features2$taxonID) ~ .,
+  #                                          data=features2,
+  #                                          importance=TRUE,
+  #                                          ntree=ntree) # ntree is number of trees to grow
+  #   print(rf_model2)
+  # }
   # initial test shows that this does not significantly improve the accuracy
   
   
