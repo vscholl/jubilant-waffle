@@ -660,7 +660,7 @@ ggplot(data = features, aes(x = taxonID, y = aspect, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: Aspect")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_ASPECT_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ASPECT_",shapefileLayerNames$description[i],".png"))
 
 # SLOPE 
 ggplot(data = features, aes(x = taxonID, y = slope, colour = taxonID)) +
@@ -669,7 +669,7 @@ ggplot(data = features, aes(x = taxonID, y = slope, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: Slope")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_SLOPE_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_SLOPE_",shapefileLayerNames$description[i],".png"))
 
 
 # CHM 
@@ -679,7 +679,7 @@ ggplot(data = features, aes(x = taxonID, y = chm, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: CHM-derived height")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_CHM_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_CHM_",shapefileLayerNames$description[i],".png"))
 
 
 # NDVI 
@@ -689,7 +689,7 @@ ggplot(data = features, aes(x = taxonID, y = NDVI, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: NDVI")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_NDVI_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDVI_",shapefileLayerNames$description[i],".png"))
 
 
 # ARVI
@@ -699,7 +699,7 @@ ggplot(data = features, aes(x = taxonID, y = ARVI, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: ARVI")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_ARVI_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ARVI_",shapefileLayerNames$description[i],".png"))
 
 
 # PRI 
@@ -709,7 +709,7 @@ ggplot(data = features, aes(x = taxonID, y = PRI, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: PRI")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_PRI_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PRI_",shapefileLayerNames$description[i],".png"))
 
 
 # NDLI
@@ -719,7 +719,7 @@ ggplot(data = features, aes(x = taxonID, y = NDLI, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: NDLI")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_NDLI_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDLI_",shapefileLayerNames$description[i],".png"))
 
 
 # NDNI
@@ -729,7 +729,7 @@ ggplot(data = features, aes(x = taxonID, y = NDNI, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: NDNI")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_NDNI_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDNI_",shapefileLayerNames$description[i],".png"))
 
 
 # rgb_mean_sd_B
@@ -739,7 +739,7 @@ ggplot(data = features, aes(x = taxonID, y = rgb_mean_sd_B, colour = taxonID)) +
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: rgb_mean_sd_B")
 
-ggsave(paste0(out_dir, outDescription, "boxplot_rgb_mean_sd_B_",shapefileLayerNames$description[i],".png"))
+ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_rgb_mean_sd_B_",shapefileLayerNames$description[i],".png"))
 
 
 
@@ -786,6 +786,9 @@ outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths_keep
 outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths/"
 outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths/" 
 outDescription <- "rf_allSamplesPerClass_ntree500_pca2InsteadOfWavelengths/" 
+#outDescription <- "rf_allSamplesPerClass_ntree500_pca4InsteadOfWavelengths/" 
+#outDescription <- "rf_allSamplesPerClass_ntree500/" 
+
 
 
 check_create_dir(paste0(out_dir,outDescription))
@@ -816,15 +819,18 @@ createBoxplots <- FALSE
 rf_output_file <- file(paste0(out_dir,outDescription,
                                   "rf_model_summaries.txt"), "w")
 
-# create an empty list to summarise the model performances
-# --> how to access the OOD error rate from the randomForest output object???!?
-#modelComparison <- data.frame(matrix(ncol = 3, nrow = nrow(shapefileLayerNames)))
-#x <- c("OOB-error", "OveralAccuracy", "rankOA")
-#colnames(modelComparison) <- x
-rfAccuracies <- data.frame(matrix(ncol = 5, nrow = nrow(shapefileLayerNames)))
-x <- c("shapefileDescription", "OA", "UA","PA","K")
-colnames(rfAccuracies) <- x
+# create an empty matrix to summarise the model Accuracies
+rfAccuracies <- data.frame(matrix(ncol = 3, nrow = nrow(shapefileLayerNames)))
+#colnames(rfAccuracies) <- c("shapefileDescription", "OA", "UA","PA","K")
+colnames(rfAccuracies) <- c("shapefileDescription", "OA", "K")
 rfAccuracies$shapefileDescription <- shapefileLayerNames$description
+
+# create an empty matrix to summarise the variable importance rankings 
+nVar = 5 # the n most important variables to record for each shapefile
+rfVarImp <- data.frame(matrix(ncol = 1 + (2*nVar), nrow = nrow(shapefileLayerNames)))
+colnames(rfVarImp) <- c("shapefileDescription", paste0("MDA_", as.character(1:nVar)),
+                        paste0("MDG_", as.character(1:nVar)))
+rfVarImp$shapefileDescription <- shapefileLayerNames$description
 
 
 # start the timer
@@ -906,8 +912,9 @@ for(i in 1:nrow(shapefileLayerNames)){
     features <- cbind(features, hs_pca$x[,1:nPCs]) # add first n PCs to features data frame
     # visualize where each sample falls on a plot with PC2 vs PC1 
     ggbiplot::ggbiplot(hs_pca, 
+                       choices = 1:2, # which PCs to plot
                        obs.scale = 1, var.scale = 1, # scale the observations and variables 
-                       #var.axes=FALSE, # remove arrows 
+                       var.axes=FALSE, # remove arrows 
                        groups = df$taxonID, # color the points by species
                        ellipse = TRUE, # draw ellipse around each group
                        circle = TRUE # draw circle around center of data set
@@ -915,7 +922,7 @@ for(i in 1:nrow(shapefileLayerNames)){
       ggtitle("PCA biplot, PC1 and PC2") + 
       scale_color_brewer(palette="Spectral")
     # save to file 
-    ggsave(paste0(out_dir, outDescription, "pcaPlot_",shapefileLayerNames$description[i],".png"))
+    ggplot2::ggsave(paste0(out_dir, outDescription, "pcaPlot_",shapefileLayerNames$description[i],".png"))
     
   }
   
@@ -982,17 +989,51 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   print(rf_model)
   
+  # write all relevant information to the textfile: 
+  # shapefile name
+  write(shapefileLayerNames$description[i], rf_output_file, append=TRUE)
+  write("\n", rf_output_file, append=TRUE) #newline
+  
+  # number of samples per class
+  featureSummary <- data.frame(featureSummary)
+  colnames(featureSummary) <- c("taxonID","numberOfSamples")
+  capture.output(featureSummary, file = rf_output_file, append=TRUE)
+  
   
   # use the rfUtilities package to calculate OA, PA, UA accuracies 
   library(rfUtilities)
-  accuracy <- rfUtilities::accuracy(rf_model$predicted,rf_model$y)
+  # x = predicted data; y = observed data (class labels) 
+  accuracy <- rfUtilities::accuracy(x = rf_model$predicted,
+                                    y = rf_model$y)
   
   # record each accuracy metric in the table for a final comparison.
   # round each value to the nearest decimal place 
   rfAccuracies$OA[i] <- round(accuracy$PCC, 1) # Overall Accuracy
-  rfAccuracies$UA[i] <-  round(accuracy$users.accuracy, 1) #User's Accuracy
-  rfAccuracies$PA[i] <- round(accuracy$producers.accuracy, 1) #Producer's Accuracy
   rfAccuracies$K[i] <- round(accuracy$kappa, 3) #Cohen's Kappa 
+  
+  # record the users and producer's accuracies for each specie s
+  rfUsersProducers <- data.frame(matrix(ncol = 3, nrow = nrow(shapefileLayerNames)))
+  colnames(rfAccuracies) <- c("shapefileDescription", "OA", "K")
+  rfAccuracies$shapefileDescription <- shapefileLayerNames$description
+  
+  write("\nOverall Accuracy:", rf_output_file, append=TRUE) #newline
+  write(accuracy$PCC, rf_output_file, append=TRUE)
+  
+  write("\nUser's Accuracy:", rf_output_file, append=TRUE) #newline
+  capture.output(accuracy$users.accuracy, file = rf_output_file, append=TRUE)
+  
+  write("\nProducer's Accuracy:", rf_output_file, append=TRUE) #newline
+  capture.output(accuracy$producers.accuracy, file = rf_output_file, append=TRUE)
+  
+  write("\nConfusion Matrix:", rf_output_file, append=TRUE) #newline
+  capture.output(accuracy$confusion, file = rf_output_file, append=TRUE)
+  
+  write("\nCohen's Kappa:", rf_output_file, append=TRUE) #newline
+  capture.output(accuracy$kappa, file = rf_output_file, append=TRUE)
+  
+  
+  # TO DO: create a nicely formatted summary data frame 
+  # using the confusion matrix, UA, PA, OA.....
   
   # Parallel randomForest
   #library(foreach)
@@ -1025,6 +1066,11 @@ for(i in 1:nrow(shapefileLayerNames)){
   save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
                                shapefileLayerNames$description[i],".RData"))
   
+  
+  
+  
+  
+  
   # use the model to predict the species for the training set 
   predTrain <- predict(rf_model, features, type = "class")
   
@@ -1034,8 +1080,8 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   # print overall accuracy
   # TO DO: modify this for the independent validation set
-  print(paste0("overall accuracy predicting train set: ",
-               as.character(mean(predTrain == features$taxonID))))
+  #print(paste0("overall accuracy predicting train set: ",
+  #             as.character(mean(predTrain == features$taxonID))))
   
   # predict species ID for validation set 
   if(independentValidationSet){
@@ -1048,21 +1094,16 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   
   # write all relevant information to the textfile: 
-  # shapefile name
-  write(shapefileLayerNames$description[i], rf_output_file, append=TRUE)
-  write("\n", rf_output_file, append=TRUE) #newline
-  
-  # number of samples per class
-  featureSummary <- data.frame(featureSummary)
-  colnames(featureSummary) <- c("taxonID","numberOfSamples")
-  capture.output(featureSummary, file = rf_output_file, append=TRUE)
-  
   # features used to describe each sample (pixel)
   write("\ndescriptive features used to train this model: ", rf_output_file, append=TRUE) #newline
   write(colnames(features), rf_output_file, append=TRUE)
   
   # RF model summary, OOB error rate 
   capture.output(rf_model, file = rf_output_file, append=TRUE)
+  
+  
+  
+  
   
   # variable importance, ordered from highest MDGini to lowest
   write("\n20 most important variables, ranked by Mean Decrease Gini: \n", 
@@ -1072,12 +1113,14 @@ for(i in 1:nrow(shapefileLayerNames)){
   colnames(varImp)[colnames(varImp) == 'MeanDecreaseGini'] <- 'MDGini'
   capture.output(varImp[1:20,],
               file = rf_output_file,
-              #sep = "\t",
-              #row.names=TRUE,
-              #col.names = TRUE,
               append=TRUE)
   
   write("\n", rf_output_file, append=TRUE)
+  
+  # RECORD TOP N MOST IMPORTANT VARIABLES BASED ON MEAN DECREASE GINI 
+  rfVarImp[i,(2+nVar):((1+nVar)+nVar)] <- rownames(varImp[1:nVar,])
+  
+  
   
   # variable importance, ordered from highest MDA to lowest
   write("\n20 most important variables, ranked by MDA: \n", 
@@ -1090,8 +1133,12 @@ for(i in 1:nrow(shapefileLayerNames)){
                  #col.names = TRUE,
                  append=TRUE)
   
-  print("Top 10 most important variables ranked by MDA")
-  print(rownames(varImp[1:10,])) 
+  print(paste0("Top ", as.character(nVar)," most important variables ranked by MDA"))
+  print(rownames(varImp[1:nVar,])) 
+  
+  # RECORD TOP N MOST IMPORTANT VARIABLES BASED ON MEAN DECREASE ACCURACY 
+  rfVarImp[i,2:(nVar+1)] <- rownames(varImp[1:nVar,])
+  
   
   # # TO DO: keep the n most important variables and run the classification again?
   # print("KEEPING TOP 5 VARIABLES AND RUNNING RF AGAIN ")
@@ -1115,91 +1162,121 @@ for(i in 1:nrow(shapefileLayerNames)){
     gg_alpha <- 1
     
     # ASPECT 
-    ggplot(data = features, aes(x = taxonID, y = aspect, colour = taxonID)) +
+    boxplot_aspect <- ggplot(data = features, aes(x = taxonID, y = aspect, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: Aspect")
-    
-    ggsave(paste0(out_dir, outDescription, "boxplot_ASPECT_",shapefileLayerNames$description[i],".png"))
+      ggtitle("Aspect")
+    boxplot_aspect
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ASPECT_",shapefileLayerNames$description[i],".png"))
     
     # SLOPE 
-    ggplot(data = features, aes(x = taxonID, y = slope, colour = taxonID)) +
+    boxplot_slope <- ggplot(data = features, aes(x = taxonID, y = slope, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: Slope")
-    
-    ggsave(paste0(out_dir, outDescription, "boxplot_SLOPE_",shapefileLayerNames$description[i],".png"))
+      ggtitle("Slope")
+    boxplot_slope
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_SLOPE_",shapefileLayerNames$description[i],".png"))
     
     
     # CHM 
-    ggplot(data = features, aes(x = taxonID, y = chm, colour = taxonID)) +
+    boxplot_chm <- ggplot(data = features, aes(x = taxonID, y = chm, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: CHM-derived height")
-    
-    ggsave(paste0(out_dir, outDescription, "boxplot_CHM_",shapefileLayerNames$description[i],".png"))
+      ggtitle("CHM-derived height")
+    boxplot_chm
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_CHM_",shapefileLayerNames$description[i],".png"))
     
     
     # NDVI 
-    ggplot(data = features, aes(x = taxonID, y = NDVI, colour = taxonID)) +
+    boxplot_ndvi <- ggplot(data = features, aes(x = taxonID, y = NDVI, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: NDVI")
-    
-    ggsave(paste0(out_dir, outDescription, "boxplot_NDVI_",shapefileLayerNames$description[i],".png"))
+      ggtitle("NDVI")
+    boxplot_ndvi
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDVI_",shapefileLayerNames$description[i],".png"))
     
     
     # ARVI
-    ggplot(data = features, aes(x = taxonID, y = ARVI, colour = taxonID)) +
+    boxplot_arvi <- ggplot(data = features, aes(x = taxonID, y = ARVI, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: ARVI")
-    
-    ggsave(paste0(out_dir, outDescription, "boxplot_ARVI_",shapefileLayerNames$description[i],".png"))
+      ggtitle("ARVI")
+    boxplot_arvi
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ARVI_",shapefileLayerNames$description[i],".png"))
     
     
     # PRI 
-    ggplot(data = features, aes(x = taxonID, y = PRI, colour = taxonID)) +
+    boxplot_pri <- ggplot(data = features, aes(x = taxonID, y = PRI, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: PRI")
-    
-    ggsave(paste0(out_dir, outDescription, "boxplot_PRI_",shapefileLayerNames$description[i],".png"))
+      ggtitle("PRI")
+    boxplot_pri
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PRI_",shapefileLayerNames$description[i],".png"))
     
     
     # NDLI
-    ggplot(data = features, aes(x = taxonID, y = NDLI, colour = taxonID)) +
+    boxplot_ndli <- ggplot(data = features, aes(x = taxonID, y = NDLI, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: NDLI")
-    
-    ggsave(paste0(out_dir, outDescription, "boxplot_NDLI_",shapefileLayerNames$description[i],".png"))
+      ggtitle("NDLI")
+    boxplot_ndli
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDLI_",shapefileLayerNames$description[i],".png"))
     
     
     # NDNI
-    ggplot(data = features, aes(x = taxonID, y = NDNI, colour = taxonID)) +
+    boxplot_ndni <- ggplot(data = features, aes(x = taxonID, y = NDNI, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: NDNI")
-    
-    ggsave(paste0(out_dir, outDescription, "boxplot_NDNI_",shapefileLayerNames$description[i],".png"))
+      ggtitle("NDNI")
+    boxplot_ndni
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDNI_",shapefileLayerNames$description[i],".png"))
     
     # PC 1 
-    ggplot(data = features, aes(x = taxonID, y = PC1, colour = taxonID)) +
+    boxplot_pc1 <- ggplot(data = features, aes(x = taxonID, y = PC1, colour = taxonID)) +
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: PC1")
+      ggtitle("PC1")
+    boxplot_pc1
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PC1_",shapefileLayerNames$description[i],".png"))
     
-    ggsave(paste0(out_dir, outDescription, "boxplot_PC1_",shapefileLayerNames$description[i],".png"))
+    # PC 2 
+    boxplot_pc2 <- ggplot(data = features, aes(x = taxonID, y = PC2, colour = taxonID)) +
+      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_jitter(width = 0.2, size = 0.5) + 
+      scale_color_brewer(palette="Spectral") + 
+      ggtitle("PC2")
+    boxplot_pc2
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PC2_",shapefileLayerNames$description[i],".png"))
+    
+    # PC 3 
+    if(nPCs >=3){ 
+    ggplot(data = features, aes(x = taxonID, y = PC3, colour = taxonID)) +
+      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_jitter(width = 0.2, size = 0.5) + 
+      scale_color_brewer(palette="Spectral") + 
+      ggtitle("PC3")
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PC3_",shapefileLayerNames$description[i],".png"))
+    }
+    
+    # PC 4 
+    if(nPCs >=4){ 
+      ggplot(data = features, aes(x = taxonID, y = PC4, colour = taxonID)) +
+        geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+        geom_jitter(width = 0.2, size = 0.5) + 
+        scale_color_brewer(palette="Spectral") + 
+        ggtitle("PC4")
+      ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PC4_",shapefileLayerNames$description[i],".png"))
+    }
+    
     
     
     # rgb_mean_sd_B
@@ -1207,9 +1284,9 @@ for(i in 1:nrow(shapefileLayerNames)){
       geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
-      ggtitle("Interspecies boxplot comparison: rgb_mean_sd_B")
+      ggtitle("rgb_mean_sd_B")
     
-    ggsave(paste0(out_dir, outDescription, "boxplot_rgb_mean_sd_B_",shapefileLayerNames$description[i],".png"))
+    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_rgb_mean_sd_B_",shapefileLayerNames$description[i],".png"))
     
     
     
@@ -1223,13 +1300,22 @@ for(i in 1:nrow(shapefileLayerNames)){
 # close the text file
 close(rf_output_file)
 
-# TO DO: write the features to a text tfile 
+# write the accuracy summary data frame to file 
+write.csv(rfAccuracies, paste0(out_dir, outDescription, "rfAccuracies.csv"))
+# write the variable importance summary to file 
+write.csv(rfVarImp, paste0(out_dir, outDescription, "rfVarImp.csv"))
+
 
 end_time <- Sys.time()
 print("Elapsed time: ")
 print(end_time-start_time)
 
-# create a nice tabl to summarize the model accuracies 
+
+
+
+# ACCURACY TABLE  ---------------------------------------------------------
+
+# create a nice table to summarize the model accuracies 
 #https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html 
 library(kableExtra)
 rfAccuracies %>%
@@ -1240,10 +1326,74 @@ rfAccuracies %>%
 #https://www.littlemissdata.com/blog/prettytables
 library(formattable)
 colnames(rfAccuracies) <- c("Shapefile Description",
-                            "OA [%]", "UA [%]", "PA [%]", "Kappa")
+                            "OA [%]", "Kappa")
 formattable(rfAccuracies, 
             align =c("l","c","c","c","c"), 
             list(`shapefileDescription` = formatter(
               "span", style = ~ style(color = "grey",font.weight = "bold")) 
             ))
+
+
+# VARIABLE IMPORTANCE TABLE  ----------------------------------------------
+
+formattable(rfVarImp)
+
+# Multiplot of interspecies variable comparison
+
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+# experimenting with multiplot creation and writing to file.....
+multiplot(boxplot_aspect + theme(legend.position="none"), 
+          boxplot_slope + theme(legend.position="none"), 
+          boxplot_chm + theme(legend.position="none"), 
+          boxplot_arvi + theme(legend.position="none"), 
+          boxplot_ndvi + theme(legend.position="none"), 
+          boxplot_pc1 + theme(legend.position="none"), 
+          cols=3)
+
+ggplot2::ggsave(g, "test_MULTIPLOT.png")
   
