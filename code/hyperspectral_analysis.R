@@ -564,8 +564,6 @@ bhattacharyya <- function(m1, s1, m2, s2) {
 # Values range from 0 (poor separability) to 2 (great separability)
 jeffries.matusita <- function(...) 2*(1-exp(-bhattacharyya(...)))
 
-
-
 #------------------------------------------------------------------------------------#
 # Generate sets of sample data for d bands aggregated into classes.
 d <- 14                          # Number of bands
@@ -787,14 +785,15 @@ outDescription <- "rf_allSamplesPerClass_ntree500_pca4InsteadOfWavelengths_keep1
 outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths_keep10MostImpVar/"
 outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths/"
 outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths/" 
+outDescription <- "rf_allSamplesPerClass_ntree500_pca2InsteadOfWavelengths/" 
 
 
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
-#ntree <- 500
-ntree <- 2000 # using PCA the run time is significantly cut down 
-ntree <- 5000
+ntree <- 500
+#ntree <- 2000 # using PCA the run time is significantly cut down 
+#ntree <- 5000
 
 # boolean variable. if TRUE, select random minSamples per class to reduce bias
 randomMinSamples <- FALSE
@@ -822,6 +821,10 @@ rf_output_file <- file(paste0(out_dir,outDescription,
 #modelComparison <- data.frame(matrix(ncol = 3, nrow = nrow(shapefileLayerNames)))
 #x <- c("OOB-error", "OveralAccuracy", "rankOA")
 #colnames(modelComparison) <- x
+rfAccuracies <- data.frame(matrix(ncol = 5, nrow = nrow(shapefileLayerNames)))
+x <- c("shapefileDescription", "OA", "UA","PA","K")
+colnames(rfAccuracies) <- x
+rfAccuracies$shapefileDescription <- shapefileLayerNames$description
 
 
 # start the timer
@@ -979,6 +982,17 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   print(rf_model)
   
+  
+  # use the rfUtilities package to calculate OA, PA, UA accuracies 
+  library(rfUtilities)
+  accuracy <- rfUtilities::accuracy(rf_model$predicted,rf_model$y)
+  
+  # record each accuracy metric in the table for a final comparison.
+  # round each value to the nearest decimal place 
+  rfAccuracies$OA[i] <- round(accuracy$PCC, 1) # Overall Accuracy
+  rfAccuracies$UA[i] <-  round(accuracy$users.accuracy, 1) #User's Accuracy
+  rfAccuracies$PA[i] <- round(accuracy$producers.accuracy, 1) #Producer's Accuracy
+  rfAccuracies$K[i] <- round(accuracy$kappa, 1) #Cohen's Kappa 
   
   # Parallel randomForest
   #library(foreach)
