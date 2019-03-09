@@ -992,7 +992,7 @@ for(i in 1:nrow(shapefileLayerNames)){
   rfAccuracies$OA[i] <- round(accuracy$PCC, 1) # Overall Accuracy
   rfAccuracies$UA[i] <-  round(accuracy$users.accuracy, 1) #User's Accuracy
   rfAccuracies$PA[i] <- round(accuracy$producers.accuracy, 1) #Producer's Accuracy
-  rfAccuracies$K[i] <- round(accuracy$kappa, 1) #Cohen's Kappa 
+  rfAccuracies$K[i] <- round(accuracy$kappa, 3) #Cohen's Kappa 
   
   # Parallel randomForest
   #library(foreach)
@@ -1229,4 +1229,21 @@ end_time <- Sys.time()
 print("Elapsed time: ")
 print(end_time-start_time)
 
+# create a nice tabl to summarize the model accuracies 
+#https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html 
+library(kableExtra)
+rfAccuracies %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover","condensed", 
+                                      full_width=F, align = "center"))
+
+#https://www.littlemissdata.com/blog/prettytables
+library(formattable)
+colnames(rfAccuracies) <- c("Shapefile Description",
+                            "OA [%]", "UA [%]", "PA [%]", "Kappa")
+formattable(rfAccuracies, 
+            align =c("l","c","c","c","c"), 
+            list(`shapefileDescription` = formatter(
+              "span", style = ~ style(color = "grey",font.weight = "bold")) 
+            ))
   
