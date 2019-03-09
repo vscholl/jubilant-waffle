@@ -482,24 +482,49 @@ wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
                                            skip = 1,
                                            col.names = 'wavelength')))
 
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allStems.csv")
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allPolygons_halfDiameter.csv")
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allPolygons_maxDiameter.csv")
+# loop through each shapefile name, read the .csv containing spectral reflectance 
+# for all trees within each data set, generate a ribbon plot and write to image file
+# in the figures/ output directory 
+for(i in 1:nrow(shapefileLayerNames)){
+  extracted_features_filename <- paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
+                                        shapefileLayerNames$description[i],".csv")
+  
+  createRibbonPlot(wavelengths, extracted_features_filename)
+ 
+}
 
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegStems_maxDiameter.csv")
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegPolygons_halfDiameter.csv")
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegPolygons_maxDiameter.csv")
-
-createRibbonPlot(wavelengths, extracted_features_filename)
 
 
+# calculate JM distance - spectral separability ---------------------------
 
+for(i in 1:nrow(shapefileLayerNames)){
+  extracted_features_filename <- paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
+                                        shapefileLayerNames$description[i],".csv")
+  
+  distances <- jmDist(extracted_features_filename)
+  print(distances)
+  
+}
+
+
+
+# spectral data with reflectance per wavelength (column), with each
+# row being a different pixel
+x <- features %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
+
+# class labels for each pixel. taxonIDs are originally factors.
+# reclassify them as numbers. 
+classes <- features$taxonID
+classNumbers <- matrix(nrow = length(classes))
+classNumbers[classes == "ABLAL"] <- 1
+classNumbers[classes == "PICOL"] <- 2
+classNumbers[classes == "PIEN"] <- 3
+classNumbers[classes == "PIFL2"] <- 4
+classes <- classNumbers
 
 # spectral separability ---------------------------------------------------
 
 # https://www.rdocumentation.org/packages/fpc/versions/2.1-11.1/topics/bhattacharyya.dist 
-
-
 #https://www.rdocumentation.org/packages/varSel/versions/0.1/topics/JMdist
 library(varSel)
 
@@ -518,10 +543,6 @@ classNumbers[classes == "PIFL2"] <- 4
 g <- classNumbers
 
 sep <- varSel::JMdist(g,X)
-
-
-
-
 
 
 # Jeffries-Matusita distance ----------------------------------------------
@@ -567,6 +588,9 @@ for (i in 1:n.class) {
   x <- rbind(x, mvrnorm(n[i], mu[, i], sigma))
   classes <- c(classes, rep(i, n[i]))
 }
+
+
+
 # Given a set of bands (as the columns of x) and a grouping variable in `class`,
 # compute the class means and covariance matrices (the "signatures").
 classes.stats <- by(x, classes, function(y) list(mean=apply(y, 2, mean), cov=cov(y)))
