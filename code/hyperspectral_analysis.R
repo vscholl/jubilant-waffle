@@ -483,11 +483,12 @@ wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
                                            col.names = 'wavelength')))
 
 extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allStems.csv")
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allPolygons_maxDiameter.csv")
 extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allPolygons_halfDiameter.csv")
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegPolygons_maxDiameter.csv")
-extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegPolygons_halfDiameter.csv")
+extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_allPolygons_maxDiameter.csv")
+
 extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegStems_maxDiameter.csv")
+extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegPolygons_halfDiameter.csv")
+extracted_features_filename <- paste0(out_dir, "NIWO_spectral_reflectance_ALL_neonvegPolygons_maxDiameter.csv")
 
 createRibbonPlot(wavelengths, extracted_features_filename)
 
@@ -616,6 +617,12 @@ for (i in 2:n.class) {
   }
 }
 print(distances)
+
+
+
+
+
+
 
 
 

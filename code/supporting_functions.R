@@ -1059,6 +1059,13 @@ createRibbonPlot <- function(wavelengths, reflFilename){
   refl_tidy$mean_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
   refl_tidy$max_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
   refl_tidy$min_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+  refl_tidy$sd_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+  
+  # add and subtract one standard deviation from the mean 
+  refl_tidy$mean_plus_sd <- refl_tidy$mean_reflectance + refl_tidy$sd_reflectance
+  refl_tidy$mean_minus_sd <- refl_tidy$mean_reflectance - refl_tidy$sd_reflectance
+  # set any negative values to zero for proper plotting 
+  refl_tidy$mean_minus_sd[refl_tidy$mean_minus_sd<0] <- 0
   
   # specify the colors for the reflectance curves & shading around them 
   shading_colors <- c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
@@ -1078,11 +1085,10 @@ createRibbonPlot <- function(wavelengths, reflFilename){
     
     # ABLAL
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[1], ],
-                #aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
-                #aes(ymin = mean_minus_sd[mean_minus_sd$taxonID == species[1], ], 
-                #    ymax = mean_plus_sd[mean_plus_sd$taxonID == species[1], ]), # std dev shading
-                aes(ymin = mean_reflectance - sd_reflectance,
-                    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                #aes(ymin = mean_reflectance - sd_reflectance,
+                #    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                aes(ymin = mean_minus_sd,
+                    ymax = mean_plus_sd), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
                 fill = shading_colors[1],
@@ -1091,8 +1097,10 @@ createRibbonPlot <- function(wavelengths, reflFilename){
     # PICOL
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[2], ],
                 #aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
-                aes(ymin = mean_reflectance - sd_reflectance,
-                    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                #aes(ymin = mean_reflectance - sd_reflectance,
+                #    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                aes(ymin = mean_minus_sd,
+                    ymax = mean_plus_sd), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
                 fill = shading_colors[2],
@@ -1101,8 +1109,10 @@ createRibbonPlot <- function(wavelengths, reflFilename){
     # PIEN
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[3], ],
                 # aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
-                aes(ymin = mean_reflectance - sd_reflectance,
-                    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                #aes(ymin = mean_reflectance - sd_reflectance,
+                #    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                aes(ymin = mean_minus_sd,
+                    ymax = mean_plus_sd), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
                 fill = shading_colors[3],
@@ -1111,8 +1121,10 @@ createRibbonPlot <- function(wavelengths, reflFilename){
     # PIFL2
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[4], ],
                 # aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
-                aes(ymin = mean_reflectance - sd_reflectance,
-                    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                #aes(ymin = mean_reflectance - sd_reflectance,
+                #    ymax = mean_reflectance + sd_reflectance), # std dev shading
+                aes(ymin = mean_minus_sd,
+                    ymax = mean_plus_sd), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
                 fill = shading_colors[4],
