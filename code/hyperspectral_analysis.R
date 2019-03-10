@@ -655,7 +655,7 @@ gg_alpha <- 1
 
 # ASPECT 
 ggplot(data = features, aes(x = taxonID, y = aspect, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: Aspect")
@@ -664,7 +664,7 @@ ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ASPECT_",shapefileLayer
 
 # SLOPE 
 ggplot(data = features, aes(x = taxonID, y = slope, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: Slope")
@@ -674,7 +674,7 @@ ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_SLOPE_",shapefileLayerN
 
 # CHM 
 ggplot(data = features, aes(x = taxonID, y = chm, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: CHM-derived height")
@@ -684,7 +684,7 @@ ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_CHM_",shapefileLayerNam
 
 # NDVI 
 ggplot(data = features, aes(x = taxonID, y = NDVI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: NDVI")
@@ -694,7 +694,7 @@ ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDVI_",shapefileLayerNa
 
 # ARVI
 ggplot(data = features, aes(x = taxonID, y = ARVI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: ARVI")
@@ -704,7 +704,7 @@ ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ARVI_",shapefileLayerNa
 
 # PRI 
 ggplot(data = features, aes(x = taxonID, y = PRI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: PRI")
@@ -714,7 +714,7 @@ ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PRI_",shapefileLayerNam
 
 # NDLI
 ggplot(data = features, aes(x = taxonID, y = NDLI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: NDLI")
@@ -724,7 +724,7 @@ ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDLI_",shapefileLayerNa
 
 # NDNI
 ggplot(data = features, aes(x = taxonID, y = NDNI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: NDNI")
@@ -734,7 +734,7 @@ ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDNI_",shapefileLayerNa
 
 # rgb_mean_sd_B
 ggplot(data = features, aes(x = taxonID, y = rgb_mean_sd_B, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 0.5) + 
   scale_color_brewer(palette="Spectral") + 
   ggtitle("Interspecies boxplot comparison: rgb_mean_sd_B")
@@ -788,6 +788,7 @@ outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths/"
 outDescription <- "rf_allSamplesPerClass_ntree500_pca2InsteadOfWavelengths/" 
 #outDescription <- "rf_allSamplesPerClass_ntree500_pca4InsteadOfWavelengths/" 
 #outDescription <- "rf_allSamplesPerClass_ntree500/" 
+outDescription <- "rf_allSamplesPerClass_ntree500_pca2InsteadOfWavelengths_nVar6/" 
 
 
 
@@ -826,7 +827,7 @@ colnames(rfAccuracies) <- c("shapefileDescription", "OA", "K")
 rfAccuracies$shapefileDescription <- shapefileLayerNames$description
 
 # create an empty matrix to summarise the variable importance rankings 
-nVar = 5 # the n most important variables to record for each shapefile
+nVar = 6 # the n most important variables to record for each shapefile
 rfVarImp <- data.frame(matrix(ncol = 1 + (2*nVar), nrow = nrow(shapefileLayerNames)))
 colnames(rfVarImp) <- c("shapefileDescription", paste0("MDA_", as.character(1:nVar)),
                         paste0("MDG_", as.character(1:nVar)))
@@ -1163,7 +1164,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # ASPECT 
     boxplot_aspect <- ggplot(data = features, aes(x = taxonID, y = aspect, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("Aspect")
@@ -1172,7 +1173,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # SLOPE 
     boxplot_slope <- ggplot(data = features, aes(x = taxonID, y = slope, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("Slope")
@@ -1182,7 +1183,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # CHM 
     boxplot_chm <- ggplot(data = features, aes(x = taxonID, y = chm, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("CHM-derived height")
@@ -1192,7 +1193,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # NDVI 
     boxplot_ndvi <- ggplot(data = features, aes(x = taxonID, y = NDVI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("NDVI")
@@ -1202,7 +1203,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # ARVI
     boxplot_arvi <- ggplot(data = features, aes(x = taxonID, y = ARVI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("ARVI")
@@ -1212,7 +1213,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # PRI 
     boxplot_pri <- ggplot(data = features, aes(x = taxonID, y = PRI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("PRI")
@@ -1222,7 +1223,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # NDLI
     boxplot_ndli <- ggplot(data = features, aes(x = taxonID, y = NDLI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("NDLI")
@@ -1232,7 +1233,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # NDNI
     boxplot_ndni <- ggplot(data = features, aes(x = taxonID, y = NDNI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("NDNI")
@@ -1241,7 +1242,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # PC 1 
     boxplot_pc1 <- ggplot(data = features, aes(x = taxonID, y = PC1, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("PC1")
@@ -1250,7 +1251,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # PC 2 
     boxplot_pc2 <- ggplot(data = features, aes(x = taxonID, y = PC2, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("PC2")
@@ -1260,7 +1261,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     # PC 3 
     if(nPCs >=3){ 
     ggplot(data = features, aes(x = taxonID, y = PC3, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
       geom_jitter(width = 0.2, size = 0.5) + 
       scale_color_brewer(palette="Spectral") + 
       ggtitle("PC3")
@@ -1270,7 +1271,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     # PC 4 
     if(nPCs >=4){ 
       ggplot(data = features, aes(x = taxonID, y = PC4, colour = taxonID)) +
-        geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
+        geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
         geom_jitter(width = 0.2, size = 0.5) + 
         scale_color_brewer(palette="Spectral") + 
         ggtitle("PC4")
@@ -1280,10 +1281,17 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     
     # rgb_mean_sd_B
-    ggplot(data = features, aes(x = taxonID, y = rgb_mean_sd_B, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = TRUE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
+    ggplot(data = features, aes(x = taxonID, 
+                                y = rgb_mean_sd_B, 
+                                #colour = taxonID, 
+                                fill = taxonID)) +
+      geom_boxplot(alpha = gg_alpha, 
+                   notch = FALSE, 
+                   varwidth = TRUE, 
+                   outlier.shape = NA) +
+      scale_fill_brewer(palette = "Spectral") +
+      #geom_jitter(width = 0.2, size = 0.5) + 
+      #scale_color_brewer(palette="Spectral") + 
       ggtitle("rgb_mean_sd_B")
     
     ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_rgb_mean_sd_B_",shapefileLayerNames$description[i],".png"))
@@ -1396,4 +1404,32 @@ multiplot(boxplot_aspect + theme(legend.position="none"),
           cols=3)
 
 ggplot2::ggsave(g, "test_MULTIPLOT.png")
+
+
+# select the top n most important variables for the current model 
+vars <- as.character(rfVarImp[2,2:7 ])
+# subset the features data frame to obtain just the columns needed 
+test_features <- features %>% dplyr::select(c(taxonID, vars))
+# "gather" the wide data to make it longer.
+# each row represents a value. There is a separate column to indicate
+# species and also which feature (lidar, hs, rgb, etc...) for grouping in the plot
+features_gathered <- tidyr::gather(test_features, "feature", "value",-taxonID)
+# make a new column where each feature name is a factor, so the plots
+# can be arranged in order of most important to least important 
+features_gathered$feature_ordered = factor(features_gathered$feature, levels=vars)
+
+# create the multi-plot
+ggplot(data = features_gathered, aes(x = taxonID, y = value)) + 
+  geom_boxplot(aes(fill = taxonID),outlier.size = 0.2) + 
+  facet_wrap(. ~ feature_ordered,scales='free',ncol=3) + 
+  scale_fill_brewer(palette = "Spectral") + 
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ggtitle(paste0("Interspecies boxplot comparison of most important features: \n",
+                 shapefileLayerNames$description[i]))
+
+ggsave(filename = paste0(out_dir,outDescription,"boxplot_impVar_",shapefileLayerNames$description[i],".png"))
+
+
   
