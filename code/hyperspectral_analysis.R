@@ -66,20 +66,20 @@ allPolygons_halfDiameter_layer <- c("allPolygons_halfDiameter",
                                     "shapefiles_halfDiameter/",
                                     "polygons_all")
 
-# neon_veg workflow polygons generated with max diameter 
-neonvegPolygons_maxDiameter_layer <- c("neonvegPolygons_maxDiameter",
-                                       "shapefiles_maxDiameter/",
-                                       "polygons_clipped_overlap")
+# neon_veg workflow stems, corresponding to polygons generated with max diameter
+neonvegStems_maxDiameter_layer <- c("neonvegStems_maxDiameter",
+                                    "shapefiles_maxDiameter/",
+                                    "mapped_stems_final")
 
 # neon_veg workflow polygons generated with half the max diameter  
 neonvegPolygons_halfDiameter_layer <- c("neonvegPolygons_halfDiameter",
                                         "shapefiles_halfDiameter/",
                                         "polygons_clipped_overlap")
 
-# neon_veg workflow stems, corresponding to polygons generated with max diameter
-neonvegStems_maxDiameter_layer <- c("neonvegStems_maxDiameter",
-                                    "shapefiles_maxDiameter/",
-                                    "mapped_stems_final")
+# neon_veg workflow polygons generated with max diameter 
+neonvegPolygons_maxDiameter_layer <- c("neonvegPolygons_maxDiameter",
+                                       "shapefiles_maxDiameter/",
+                                       "polygons_clipped_overlap")
 
 # create a data frame containing the description, directory, and shapefile name
 # for each of the shapefile scenarios to be tested 
@@ -198,7 +198,7 @@ for (h5 in h5_list) {
     # if it doesn't exist, generate the rasterstack. 
     message("creating rasterstack for current tile...")
     # create a georeferenced rasterstack using the current hyperspectral tile
-    s <- stack_hyperspectral(h5)
+    s <- stack_hyperspectral(h5, out_dir)
     # save the rasterstack to file 
     saveRDS(s, file = rasterstack_filename)
   }
@@ -264,7 +264,6 @@ for (h5 in h5_list) {
     # Since the RGB data has a spatial resolution that is 1/10th of the 
     # other data layers (10cm compared to 1m), fact should be 10 to produce 
     # an output raster with 1000 x 1000 pixels. 
-    
     # mean intensity per 1m x 1m grid cell 
     rgb_meanR <- raster::aggregate(rgb_red, fact = 10, fun = mean)
     rgb_meanG <- raster::aggregate(rgb_green, fact = 10, fun = mean)
@@ -335,6 +334,89 @@ for (h5 in h5_list) {
   stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, vegIndices, 
                                        rgb_features, pixelNumbers)
   print("Stacked AOP data for current tile. ")
+  
+
+  # plot rasters ------------------------------------------------------------
+  # show raster examples for specific tile with a road (defining feature)
+  if(east_north_string == "452000_4432000"){
+    
+    # plot the high-res RGB image
+    rgb_stack <- raster::stack(rgb_red, rgb_green, rgb_blue)
+    rgb_brick <- raster::brick(rgb_stack)
+    raster::plotRGB(rgb_brick,
+                    r = 1, g = 2, b = 3,
+                    stretch = "lin",
+                    axes = TRUE,
+                    main="Digital Camera RGB",
+                    cex.main=1)
+    
+    # plot RGB composite using selected bands from the hyperspectral imagery
+    r <- s[[which.min(abs(wavelengths - 620))]]
+    g <- s[[which.min(abs(wavelengths - 555))]]
+    b <- s[[which.min(abs(wavelengths - 450))]]
+    hs_rgb_stack <- raster::stack(r,g,b)
+    hs_rgb_brick <- raster::brick(hs_rgb_stack)
+    
+    raster::plotRGB(hs_rgb_brick,
+            r = 1, g = 2, b = 3,
+            stretch = "lin",
+            axes = TRUE,
+            main="Hyperspectral-derived \nRGB Composite using bands 620nm, 555nm, 450nm",
+            #xlab="Easting (m)",
+            #ylab="Northing (m)", 
+            cex.main=1)
+    
+    # write the RGB composite to an image file for visualizing in QGIS
+    writeRaster(hs_rgb_brick,
+                paste0(out_dir,"rgb_composite_452000_4432000.tif"), 
+                format="GTiff",
+                overwrite=TRUE)
+    
+    # CHM 
+    raster::plot(chm,
+                 col=grey(1:100/100),
+                 axes = TRUE,
+                 main="Lidar-Derived Canopy Height Model",
+                 xlab="Easting (m)",
+                 ylab="Northing (m)",
+                 cex.main=1, # title text size 
+                 legend.args=list(text='Height above ground [m]',side=2, font=2, 
+                                  line=0.5, cex=0.8)) # legend on color bar
+    
+    # slope
+    raster::plot(slope,
+                 col=grey(1:100/100),
+                 axes = TRUE,
+                 main="Lidar-Derived Slope",
+                 xlab="Easting (m)",
+                 ylab="Northing (m)",
+                 cex.main=1,
+                 legend.args=list(text='Ratio of rise over run [degrees]',side=2, font=2, 
+                                  line=0.5, cex=0.8)) # legend on color bar)
+    
+    # aspect 
+    raster::plot(aspect,
+                 col=grey(1:100/100),
+                 axes = TRUE,
+                 main="Lidar-Derived Aspect",
+                 xlab="Easting (m)",
+                 ylab="Northing (m)",
+                 cex.main=1,
+                 legend.args=list(text='Direction of steepest slope \n [degrees from North]',side=2, font=2, 
+                                  line=0.5, cex=0.8)) # legend on color bar)
+    
+    # NDVI vegetation index
+    raster::plot(vegIndices[["NDVI"]],
+                 col=grey(1:100/100),
+                 axes = TRUE,
+                 main="Hyperspectral-Derived NDVI",
+                 xlab="Easting (m)",
+                 ylab="Northing (m)",
+                 cex.main=1,
+                 legend.args=list(text='NDVI [0,1]',side=2, font=2, 
+                                  line=0.5, cex=0.8)) # legend on color bar))
+    
+  }
   
   
   # clip data cube - extract features ----------------------------------------
@@ -796,8 +878,6 @@ check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
 ntree <- 500
-#ntree <- 2000 # using PCA the run time is significantly cut down 
-#ntree <- 5000
 
 # boolean variable. if TRUE, select random minSamples per class to reduce bias
 randomMinSamples <- FALSE
@@ -814,7 +894,7 @@ nPCs <- 2 # number of PCAs to keep
 keepMostImpVar <- FALSE
 
 # create boxplots and write to file 
-createBoxplots <- FALSE
+createBoxplots <- TRUE
 
 # open a text file to record the output results 
 rf_output_file <- file(paste0(out_dir,outDescription,
@@ -822,7 +902,6 @@ rf_output_file <- file(paste0(out_dir,outDescription,
 
 # create an empty matrix to summarise the model Accuracies
 rfAccuracies <- data.frame(matrix(ncol = 3, nrow = nrow(shapefileLayerNames)))
-#colnames(rfAccuracies) <- c("shapefileDescription", "OA", "UA","PA","K")
 colnames(rfAccuracies) <- c("shapefileDescription", "OA", "K")
 rfAccuracies$shapefileDescription <- shapefileLayerNames$description
 
@@ -1159,144 +1238,56 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   
   if (createBoxplots == TRUE){
-    print("Creating boxplots to compare variable distributions across species...")
-    gg_alpha <- 1
+
+    # select the top n most important variables based on MDA for the current model 
+    vars <- as.character(rfVarImp[i,2:(nVar+1) ])
+    # subset the features data frame to obtain just the columns needed 
+    test_features <- features %>% dplyr::select(c(taxonID, vars))
+    # "gather" the wide data to make it longer.
+    # each row represents a value. There is a separate column to indicate
+    # species and also which feature (lidar, hs, rgb, etc...) for grouping in the plot
+    features_gathered <- tidyr::gather(test_features, "feature", "value",-taxonID)
+    # make a new column where each feature name is a factor, so the plots
+    # can be arranged in order of most important to least important 
+    features_gathered$feature_ordered = factor(features_gathered$feature, levels=vars)
     
-    # ASPECT 
-    boxplot_aspect <- ggplot(data = features, aes(x = taxonID, y = aspect, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("Aspect")
-    boxplot_aspect
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ASPECT_",shapefileLayerNames$description[i],".png"))
-    
-    # SLOPE 
-    boxplot_slope <- ggplot(data = features, aes(x = taxonID, y = slope, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("Slope")
-    boxplot_slope
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_SLOPE_",shapefileLayerNames$description[i],".png"))
-    
-    
-    # CHM 
-    boxplot_chm <- ggplot(data = features, aes(x = taxonID, y = chm, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("CHM-derived height")
-    boxplot_chm
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_CHM_",shapefileLayerNames$description[i],".png"))
+    # create the multi-plot
+    ggplot(data = features_gathered, aes(x = taxonID, y = value)) + 
+      geom_boxplot(aes(fill = taxonID),outlier.size = 0.2) + 
+      facet_wrap(. ~ feature_ordered,scales='free',ncol=3) + 
+      scale_fill_brewer(palette = "Spectral") + 
+      theme(axis.title.x=element_blank(),
+            axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+      ggtitle(paste0("Interspecies boxplot comparison of MDA most important features: \n",
+                     shapefileLayerNames$description[i]))
+    ggsave(filename = paste0(out_dir,outDescription,"boxplot_impVarMDA_",shapefileLayerNames$description[i],".png"))
     
     
-    # NDVI 
-    boxplot_ndvi <- ggplot(data = features, aes(x = taxonID, y = NDVI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("NDVI")
-    boxplot_ndvi
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDVI_",shapefileLayerNames$description[i],".png"))
+    # MDG
+    # select the top n most important variables based on MDA for the current model 
+    vars <- as.character(rfVarImp[i,(2+nVar):(1+2*nVar)])
+    # subset the features data frame to obtain just the columns needed 
+    test_features <- features %>% dplyr::select(c(taxonID, vars))
+    # "gather" the wide data to make it longer.
+    # each row represents a value. There is a separate column to indicate
+    # species and also which feature (lidar, hs, rgb, etc...) for grouping in the plot
+    features_gathered <- tidyr::gather(test_features, "feature", "value",-taxonID)
+    # make a new column where each feature name is a factor, so the plots
+    # can be arranged in order of most important to least important 
+    features_gathered$feature_ordered = factor(features_gathered$feature, levels=vars)
     
-    
-    # ARVI
-    boxplot_arvi <- ggplot(data = features, aes(x = taxonID, y = ARVI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("ARVI")
-    boxplot_arvi
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ARVI_",shapefileLayerNames$description[i],".png"))
-    
-    
-    # PRI 
-    boxplot_pri <- ggplot(data = features, aes(x = taxonID, y = PRI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("PRI")
-    boxplot_pri
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PRI_",shapefileLayerNames$description[i],".png"))
-    
-    
-    # NDLI
-    boxplot_ndli <- ggplot(data = features, aes(x = taxonID, y = NDLI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("NDLI")
-    boxplot_ndli
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDLI_",shapefileLayerNames$description[i],".png"))
-    
-    
-    # NDNI
-    boxplot_ndni <- ggplot(data = features, aes(x = taxonID, y = NDNI, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("NDNI")
-    boxplot_ndni
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDNI_",shapefileLayerNames$description[i],".png"))
-    
-    # PC 1 
-    boxplot_pc1 <- ggplot(data = features, aes(x = taxonID, y = PC1, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("PC1")
-    boxplot_pc1
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PC1_",shapefileLayerNames$description[i],".png"))
-    
-    # PC 2 
-    boxplot_pc2 <- ggplot(data = features, aes(x = taxonID, y = PC2, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("PC2")
-    boxplot_pc2
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PC2_",shapefileLayerNames$description[i],".png"))
-    
-    # PC 3 
-    if(nPCs >=3){ 
-    ggplot(data = features, aes(x = taxonID, y = PC3, colour = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-      geom_jitter(width = 0.2, size = 0.5) + 
-      scale_color_brewer(palette="Spectral") + 
-      ggtitle("PC3")
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PC3_",shapefileLayerNames$description[i],".png"))
-    }
-    
-    # PC 4 
-    if(nPCs >=4){ 
-      ggplot(data = features, aes(x = taxonID, y = PC4, colour = taxonID)) +
-        geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-        geom_jitter(width = 0.2, size = 0.5) + 
-        scale_color_brewer(palette="Spectral") + 
-        ggtitle("PC4")
-      ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PC4_",shapefileLayerNames$description[i],".png"))
-    }
-    
-    
-    
-    # rgb_mean_sd_B
-    ggplot(data = features, aes(x = taxonID, 
-                                y = rgb_mean_sd_B, 
-                                #colour = taxonID, 
-                                fill = taxonID)) +
-      geom_boxplot(alpha = gg_alpha, 
-                   notch = FALSE, 
-                   varwidth = TRUE, 
-                   outlier.shape = NA) +
-      scale_fill_brewer(palette = "Spectral") +
-      #geom_jitter(width = 0.2, size = 0.5) + 
-      #scale_color_brewer(palette="Spectral") + 
-      ggtitle("rgb_mean_sd_B")
-    
-    ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_rgb_mean_sd_B_",shapefileLayerNames$description[i],".png"))
-    
-    
+    # create the multi-plot
+    ggplot(data = features_gathered, aes(x = taxonID, y = value)) + 
+      geom_boxplot(aes(fill = taxonID),outlier.size = 0.2) + 
+      facet_wrap(. ~ feature_ordered,scales='free',ncol=3) + 
+      scale_fill_brewer(palette = "Spectral") + 
+      theme(axis.title.x=element_blank(),
+            axis.text.x=element_blank(),
+            axis.ticks.x=element_blank()) +
+      ggtitle(paste0("Interspecies boxplot comparison of MDG most important features: \n",
+                     shapefileLayerNames$description[i]))
+    ggsave(filename = paste0(out_dir,outDescription,"boxplot_impVarMDGini_",shapefileLayerNames$description[i],".png"))
     
   }
   
@@ -1344,92 +1335,9 @@ formattable(rfAccuracies,
 
 # VARIABLE IMPORTANCE TABLE  ----------------------------------------------
 
-formattable(rfVarImp)
+# count the number of times each variable was listed in the top n important 
+varImpCounts <- as.data.frame(table(c(t(rfVarImp[,2:13]))))
 
-# Multiplot of interspecies variable comparison
-
-# Multiple plot function
-#
-# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
-# - cols:   Number of columns in layout
-# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
-#
-# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
-# then plot 1 will go in the upper left, 2 will go in the upper right, and
-# 3 will go all the way across the bottom.
-#
-multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
-  library(grid)
-  
-  # Make a list from the ... arguments and plotlist
-  plots <- c(list(...), plotlist)
-  
-  numPlots = length(plots)
-  
-  # If layout is NULL, then use 'cols' to determine layout
-  if (is.null(layout)) {
-    # Make the panel
-    # ncol: Number of columns of plots
-    # nrow: Number of rows needed, calculated from # of cols
-    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
-                     ncol = cols, nrow = ceiling(numPlots/cols))
-  }
-  
-  if (numPlots==1) {
-    print(plots[[1]])
-    
-  } else {
-    # Set up the page
-    grid.newpage()
-    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
-    
-    # Make each plot, in the correct location
-    for (i in 1:numPlots) {
-      # Get the i,j matrix positions of the regions that contain this subplot
-      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
-      
-      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
-                                      layout.pos.col = matchidx$col))
-    }
-  }
-}
-
-# experimenting with multiplot creation and writing to file.....
-multiplot(boxplot_aspect + theme(legend.position="none"), 
-          boxplot_slope + theme(legend.position="none"), 
-          boxplot_chm + theme(legend.position="none"), 
-          boxplot_arvi + theme(legend.position="none"), 
-          boxplot_ndvi + theme(legend.position="none"), 
-          boxplot_pc1 + theme(legend.position="none"), 
-          cols=3)
-
-ggplot2::ggsave(g, "test_MULTIPLOT.png")
-
-
-# select the top n most important variables for the current model 
-vars <- as.character(rfVarImp[2,2:7 ])
-# subset the features data frame to obtain just the columns needed 
-test_features <- features %>% dplyr::select(c(taxonID, vars))
-# "gather" the wide data to make it longer.
-# each row represents a value. There is a separate column to indicate
-# species and also which feature (lidar, hs, rgb, etc...) for grouping in the plot
-features_gathered <- tidyr::gather(test_features, "feature", "value",-taxonID)
-# make a new column where each feature name is a factor, so the plots
-# can be arranged in order of most important to least important 
-features_gathered$feature_ordered = factor(features_gathered$feature, levels=vars)
-
-# create the multi-plot
-ggplot(data = features_gathered, aes(x = taxonID, y = value)) + 
-  geom_boxplot(aes(fill = taxonID),outlier.size = 0.2) + 
-  facet_wrap(. ~ feature_ordered,scales='free',ncol=3) + 
-  scale_fill_brewer(palette = "Spectral") + 
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank()) +
-  ggtitle(paste0("Interspecies boxplot comparison of most important features: \n",
-                 shapefileLayerNames$description[i]))
-
-ggsave(filename = paste0(out_dir,outDescription,"boxplot_impVar_",shapefileLayerNames$description[i],".png"))
-
-
+ggplot(data = varImpCounts, aes(Var1,Freq)) + 
+  geom_col()
   

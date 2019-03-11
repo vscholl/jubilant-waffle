@@ -868,7 +868,11 @@ stack_hyperspectral <- function(h5, out_dir){
   
   # create georeferenced raster using band 1 
   r1 <- (refl_scaled[1,,]) # convert first band to matrix
-  r1 <- raster::raster(r1, crs = crs_info$Proj4)
+  # transpose the image pixels for proper orientation to match
+  # the other layers. create a raster for this band and assign
+  # the CRS.
+  print("Transposing reflectance data for proper orientation")
+  r1 <- raster::t(raster::raster(r1, crs = crs_info$Proj4))
   extent(r1) <- tile_extent
   
   # start the raster stack with first band 
@@ -880,7 +884,7 @@ stack_hyperspectral <- function(h5, out_dir){
     
     # create raster with current band
     r <- (refl_scaled[b,,]) # convert to matrix
-    r <- raster::raster(r, crs = crs_info$Proj4)
+    r <- raster::t(raster::raster(r, crs = crs_info$Proj4))
     extent(r) <- tile_extent
     
     # add additional band to the stack with the addLayer function
@@ -985,8 +989,10 @@ createRibbonPlot <- function(wavelengths, reflFilename){
                                    wavelengths < bad_band_window_2[2])]
   
   # remove columns that contain "X" in their name but are not reflectance values 
-  df <- as.data.frame(read.csv(reflFilename)) %>% select(-c(X.1,X,Y)) %>% 
-    filter(taxonID %in% taxonList)
+  df <- as.data.frame(read.csv(reflFilename)) %>% 
+          dplyr::select(-c(X.1,X,Y)) %>% 
+            dplyr::filter(taxonID %in% taxonList)
+  
   # filter the columns to only keep those with spectral reflectance
   spectra_all <- df %>% select( colnames(df)[ grepl( "X", names(df))] ) 
   
@@ -1076,17 +1082,8 @@ createRibbonPlot <- function(wavelengths, reflFilename){
   ggplot(refl_tidy, 
          aes(x = wavelength, y = mean_reflectance, color = taxonID)) + 
     
-    # shaded ribbon from min to max for each species
-    # can't get the shading colors to match the lines
-    #geom_ribbon(aes(ymin = min_reflectance,
-    #                ymax = max_reflectance,
-    #                alpha = 0.1,
-    #                fill = taxonID)) + 
-    
     # ABLAL
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[1], ],
-                #aes(ymin = mean_reflectance - sd_reflectance,
-                #    ymax = mean_reflectance + sd_reflectance), # std dev shading
                 aes(ymin = mean_minus_sd,
                     ymax = mean_plus_sd), # std dev shading
                 colour=NA,
@@ -1096,10 +1093,7 @@ createRibbonPlot <- function(wavelengths, reflFilename){
     
     # PICOL
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[2], ],
-                #aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
-                #aes(ymin = mean_reflectance - sd_reflectance,
-                #    ymax = mean_reflectance + sd_reflectance), # std dev shading
-                aes(ymin = mean_minus_sd,
+               aes(ymin = mean_minus_sd,
                     ymax = mean_plus_sd), # std dev shading
                 colour=NA,
                 alpha = shading_alpha,
@@ -1108,9 +1102,6 @@ createRibbonPlot <- function(wavelengths, reflFilename){
     
     # PIEN
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[3], ],
-                # aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
-                #aes(ymin = mean_reflectance - sd_reflectance,
-                #    ymax = mean_reflectance + sd_reflectance), # std dev shading
                 aes(ymin = mean_minus_sd,
                     ymax = mean_plus_sd), # std dev shading
                 colour=NA,
@@ -1120,9 +1111,6 @@ createRibbonPlot <- function(wavelengths, reflFilename){
     
     # PIFL2
     geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[4], ],
-                # aes(ymin = min_reflectance, ymax = max_reflectance), # min max shading
-                #aes(ymin = mean_reflectance - sd_reflectance,
-                #    ymax = mean_reflectance + sd_reflectance), # std dev shading
                 aes(ymin = mean_minus_sd,
                     ymax = mean_plus_sd), # std dev shading
                 colour=NA,
@@ -1147,14 +1135,89 @@ createRibbonPlot <- function(wavelengths, reflFilename){
     ylim(0,y_max) + 
     
     # main plot title  
-    ggtitle(paste0("Mean Hyperspectral reflectance per species: ", reflFilename, " \n",
-                   #"(shading shows minimum and maximum refl range per wavelength)")) # min max shading
-                   "(shading shows one standard deviation from mean refl range per wavelength)")) # std dev shading
+    ggtitle(paste0("Mean Hyperspectral reflectance per species: ", 
+                   tools::file_path_sans_ext(str_split(basename(reflFilename),"ALL_")[[1]][2]),
+                   " \n",
+                   # std dev shading
+                   "(shading shows one standard deviation from mean refl range per wavelength)"))
   
     # write plot to file 
     ggsave(paste0(out_dir,"/figures/","ribbon_plot_", 
                   tools::file_path_sans_ext(basename(reflFilename)), ".png"), 
            width = 10, height = 6)
 
+  
+}
+
+
+
+# JM distance -------------------------------------------------------------
+
+
+# Compute the Mahalanobis distance between two vectors.
+mahalanobis <- function(m1, m2, sigma) {m <- m1 - m2; m %*% solve(sigma, m)}
+
+# Compute the Bhattacharyya distance between two multivariate normal distributions
+# given by their means and covariance matrices.
+bhattacharyya <- function(m1, s1, m2, s2) {
+  d <- function(u) determinant(u, logarithm=TRUE)$modulus # Log determinant of matrix u
+  s <- (s1 + s2)/2                                        # mean covariance matrix
+  mahalanobis(m1, m2, s)/8 + (d(s) - d(s1)/2 - d(s2)/2)/2
+}
+
+# Re-express the Bhattacharyya distance as the Jeffries-Matusita distance.
+# Values range from 0 (poor separability) to 2 (great separability)
+jeffries.matusita <- function(...) 2*(1-exp(-bhattacharyya(...)))
+
+
+jmDist <- function(reflFilename){
+  # classes: list of class names. can be numeric or factors. 
+  # x:  each row is a sample described by features (each column)
+  # mean and covariance will be computed for each unique class
+  # using the spectra within x. 
+  
+  
+  # define the "bad bands" wavelength ranges in nanometers, where atmospheric 
+  # absorption creates unreliable reflectance values. 
+  bad_band_window_1 <- c(1340, 1445)
+  bad_band_window_2 <- c(1790, 1955)
+  taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
+  # remove the bad bands 
+  remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
+                                 wavelengths < bad_band_window_1[2]) | 
+                                (wavelengths > bad_band_window_2[1] & 
+                                   wavelengths < bad_band_window_2[2])]
+  wavelength_lut <- data.frame(wavelength = wavelengths,
+                               xwavelength = paste0("X", 
+                                                    as.character(round(wavelengths))),
+                               stringsAsFactors = FALSE) %>% 
+    filter(!wavelength %in% remove_bands)
+  
+  # remove columns that contain "X" in their name but are not reflectance values 
+  df <- as.data.frame(read.csv(reflFilename)) %>% 
+            dplyr::select(-c(X.1,X,Y)) %>% # remove extra columns that start with X 
+              dplyr::filter(taxonID %in% taxonList)# keep only the species of interest
+  
+  x <- df %>% dplyr::select(wavelength_lut$xwavelength) # remove bad bands 
+  
+  # get class labels for the spectra
+  classes <- df$taxonID %>% droplevels()
+  
+  # number of unique classes 
+  n.class <- length(unique(classes))
+  
+  # calculate the mean and covariance for all spectra within each class 
+  classes.stats <- by(x, classes, function(y) list(mean=apply(y, 2, mean), cov=cov(y)))
+  
+  # Compute the J-M distances between the classes.
+  distances <- matrix(0.0, n.class, n.class)
+  for (i in 2:n.class) {
+    m1 <- classes.stats[[i]]$mean; s1 <- classes.stats[[i]]$cov
+    for (j in 1:(i-1)) {
+      m2 <- classes.stats[[j]]$mean; s2 <- classes.stats[[j]]$cov
+      distances[i,j] <- distances[j,i] <- jeffries.matusita(m1,s1,m2,s2)
+    }
+  }
+  print(distances)
   
 }
