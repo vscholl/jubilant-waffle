@@ -46,6 +46,23 @@ setwd("~/github/jubilant-waffle/code/")
 source("supporting_functions.R")
 ```
 
+```{r study_area_map}
+library(maps)
+# plot study area with context on the US map, highlight california 
+maps::map('state', fill = TRUE, col = "darkgray", border = "white", lwd = 1)
+maps::map(database = "usa", lwd = 1, add = TRUE)
+maps::map("state", "colorado", col = "coral1",
+    lwd = 1, fill = TRUE, add = TRUE)
+
+# add the NIWO site location
+title("Study Area: Niwot Ridge Mountain Research Station (NIWO)\nColorado, NEON Domain 13, Southern Rockies & Colorado Plateau")
+
+# add the x, y location of the SJER using the points
+points(x = -105.48237, y = 40.05425, pch = 0, col = "black", cex = 1.3, lwd = 1.5)
+
+
+```
+
 Specify where the hyperspectral data and shapefiles are located. 
 
 * This project is currently structured with "code", "data", and "output" top-level directories.
@@ -910,6 +927,102 @@ writeRaster(h5_rgb,
             overwrite=TRUE)
 
 
+
+```
+
+```{r pixelNumber_comparison_remove_duplicate_spectra}
+
+  # 
+  # # see if there is a unique pixelNumber for each row in the extracted spectra df
+  # if( length(unique(spectra_write$pixelNumber)) == nrow(spectra_write)) {
+  #   print("There is one unique pixel ID for each extracted spectrum")
+  # } 
+  # 
+  # else{
+  #   print("There are multiple extracted spectra with the same pixel ID")
+  #   
+  #   # if the same pixel is extracted more than once (this can happen when polygon
+  #   # boundaries are touching or very close to one another), based on multiple
+  #   # occurrences of a single "pixelNumber" in the extracted_spectra,
+  #   # check the height of the tree. Let the taller tree keep the pixel.
+  #   
+  #   # loop through all pixelNumber values that appear in the extracted_spectra
+  #   # more than once. 
+  #   duplicatePixelNumbers <- unique(spectra_write$pixelNumber[duplicated(spectra_write$pixelNumber)])
+  #   
+  #   for (p in duplicatePixelNumbers){
+  #     
+  #     print(p)
+  #     
+  #     spectraComparison <- spectra_write %>% 
+  #       select(c("indvdID", "height", "mxCrwnD", "pixelNumber")) %>% 
+  #       filter(pixelNumber == p)
+  #     
+  #     print(spectraComparison)
+  #     
+  #     # find the maximum height across all rows with the current pixelNumber 
+  #     #maxHeight <- max(spectra_write$height[spectra_write$pixelNumber == p])
+  #     maxHeight <- max(spectraComparison$height)
+  #     
+  #     print(paste0("Max height for all rows with current pixelNumber: ", as.character(maxHeight)))
+  #     
+  #     # if one tree is the tallest, delete the other rows from the extracted spectra. 
+  #     if(sum(spectraComparison$height == maxHeight) == 1){
+  #       
+  #       deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$height != maxHeight) 
+  #       
+  #       print("Deleting rows: ")
+  #       print(deleteRows)
+  #       
+  #       # delete the rows with duplicated pixelNumber values that are not the tallest trees
+  #       spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
+  #       
+  #     } else{ 
+  #       # otherwise, if more than one tree with the current pixelNumber has 
+  #       # the maximum height value, see if one has a greater crown diameter 
+  #       
+  #       maxCrwnD = max(spectraComparison$mxCrwnD)
+  #       
+  #       print(paste0("Max diam for all rows with current pixelNumber: ", as.character(maxCrwnD)))
+  #       
+  #       if(sum(spectraComparison$mxCrwnD == maxCrwnD) == 1){
+  #         
+  #         deleteRows <- which(spectra_write$pixelNumber == p & spectra_write$mxCrwnD != maxCrwnD) 
+  #         
+  #         print("Deleting rows: ")
+  #         print(deleteRows)
+  #         
+  #         # delete the rows with duplicated pixelNumber values without the largest crown diam
+  #         spectra_write <- spectra_write %>% filter(!row_number() %in% deleteRows)
+  #         
+  #       } else{
+  #         # if the duplicate rows have identical height and crown diameter, 
+  #         # then just keep the first entry and remove any other duplicates 
+  #         print("DUPLICATE ENTRIES HAVE IDENTICAL MAX HEIGHT AND MAX CROWN DIAM.....")
+  #         
+  #         # keep the first entry that has the max height and max diameter 
+  #         keepID <- spectra_write$indvdID[spectra_write$pixelNumber == p &
+  #                                           spectra_write$height == maxHeight & 
+  #                                           spectra_write$mxCrwnD == maxCrwnD][1]
+  #         
+  #         # list the other ID's for duplicate pixelNumbers to be deleted 
+  #         deleteIDs <- spectraComparison$indvdID[!spectraComparison$indvdID %in% keepID]
+  #         
+  #         # delete the duplicate entries from the spectra data set 
+  #         spectra_write <- spectra_write %>% filter(!indvdID %in% deleteIDs)
+  #       }
+  #     }
+  #   }
+  #   
+  #   
+  #   print("number of unique pixelNumbers in the updated spectra_write data frame: ")
+  #   print(length(unique(spectra_write$pixelNumber)))
+  #   
+  #   print("number of rows in updated spectra_write data frame: ")
+  #   print(nrow(spectra_write))
+  #   
+  # }
+  # 
 
 ```
 
