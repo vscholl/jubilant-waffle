@@ -45,6 +45,9 @@ setwd("~/github/jubilant-waffle/code/")
 # load any local functions in external files 
 source("supporting_functions.R")
 
+# code for NEON site 
+site_code <- 'NIWO'
+
 # define the "bad bands" wavelength ranges in nanometers, where atmospheric 
 # absorption creates unreliable reflectance values. 
 # --> Instead, read the bad band ranges from metadata?
