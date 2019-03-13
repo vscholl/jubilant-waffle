@@ -212,7 +212,7 @@ points(as(mrs4point_mainCanopy, 'Spatial'), pch = 16, cex = 0.5)
 In theory, we know the species at each of the point locations in the plot above.
 The code below extracts features from the remote sensing data cube and run the random forest classifier to predict species, then compare to the known species. 
 
-```{r}
+```{r extract_features}
 # read stacked AOP data
 stacked_aop_filename <- "../data/NIWO/stacked_aop_data/stacked_aop_data_452000_4432000.rds"
 stacked_aop_data <- readRDS(file = stacked_aop_filename)
@@ -221,6 +221,7 @@ stacked_aop_data <- readRDS(file = stacked_aop_filename)
 mrs4point_mainCanopy_Sp <- sf::as_Spatial(mrs4point_mainCanopy,
                                   IDs = as.character(mrs4point_mainCanopy$TreeNum))
 
+# TO DO: FILTER SHAPEFILE FOR ONLY THE TREES WITHIN THE CURRENT TILE
 
 # extract all layers for each pixel in the shapefile
 extracted_spectra <- raster::extract(stacked_aop_data, 
@@ -238,8 +239,10 @@ extracted_spectra$Y <- 0
 extracted_features_filename <- paste0(out_dir, "MRS04_extracted_features.csv")
 write.csv(extracted_spectra, 
               file = extracted_features_filename) 
+```
 
 
+```{r rf}
 # read text file containing wavelengths 
 wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
                                            sep="\n",
@@ -249,5 +252,12 @@ wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
 # read random forest classifier, variable name rf_model
 load("../output/NIWO/rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6/rf_model_allPolygons_halfDiameter.RData")
 
+# read the values extracted from the data cube
+df_orig <- read.csv(extracted_features_filename)
+  
+# Remove any spectra that have a height == 0
+print(paste0(as.character(sum(df_orig$chm==0)), 
+               " pixels have a height of 0 in the CHM"))
+print("Removing these rows from the training set ... ")
 ```
 
