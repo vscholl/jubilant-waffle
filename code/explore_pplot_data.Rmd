@@ -1,0 +1,185 @@
+---
+title: "explore_pplot_data"
+author: "Victoria Scholl"
+date: "3/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE)
+library(plyr)
+library(dplyr)
+library(sf)
+library(ggplot2)
+
+# set working directory
+setwd("~/github/jubilant-waffle/code/")
+
+# list of taxon IDs present at the NEON NIWO site
+taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
+```
+
+# Exploring MRS-04 Data
+
+## Permanent Plot measurements
+
+```{r mrs4_pp_data}
+# read the Excel file with MRS-04 Permanent Plot measurements
+# I saved a .csv with the MRS4 sheet
+mrs4_filename <- "../data/NIWO/tom_mrs04/Veblen_LTER_PP_Data_03262018_MRS04.csv"
+mrs4_data <- read.csv(mrs4_filename)
+
+# filter the data for entries with hc3 == 1
+# hc3 column:
+# Height class estimated during re-measurement in 2016.  
+# 1 = main canopy, 2 = intermediate, 3 = subcanopy
+mrs4_data_mainCanopy <- mrs4_data %>% dplyr::filter(hc3==1) %>% 
+                          # convert from list to data frame 
+                          as.data.frame() %>% 
+                            # rename the Sp. and Tree. columns
+                            dplyr::rename(taxonID = Sp.,
+                                          TreeNum = Tree.)
+
+# count the number of trees per taxon ID in the main canopy
+plyr::count(mrs4_data_mainCanopy, 'taxonID') %>%
+  knitr::kable() %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover",
+                                                  "condensed"),
+                            full_width = F,
+                            position = "left")
+
+# These taxon ID codes are different from the NEON taxon ID codes -
+# these will be adjusted later. 
+```
+
+## Georeferenced tree point locations 
+
+```{r}
+# directory containing georeferenced shapefiles at MRS4
+input_dir <- "../data/NIWO/tom_mrs04/mrs04_georeferenced_using_unavco_gps_points/"
+
+# the "MRS4point.shp" feature class contains point locations
+# for each numbered tree (TreeNum attribute)
+mrs4point_layer <- "MRS4point.shp"
+mrs4point <- sf::st_read(paste0(input_dir, mrs4point_layer))
+
+# print the number of trees with stem locations in the MRS4point.shp file
+print(paste0("There are ", as.character(length(mrs4point$TreeNum)), 
+             " trees in the MRS4point shapefile"))
+
+# plot the tree points
+ggplot2::ggplot() + 
+  ggplot2::geom_sf(data = mrs4point, size = 1, color = "black") + 
+  ggtitle("MRS4point.shp") + 
+  coord_sf()
+
+# The other shapefiles in the input_dir contain sapling measurements. 
+# I will focus on the larger trees for now. 
+```
+
+
+
+```{r filter_treeNum_mrs4point}
+# filter the tree point shapefiles for entries with matching tree numbers
+# to the main canopy data (h3 == 1 from earlier)
+mrs4point_mainCanopy <- mrs4point %>% 
+              dplyr::filter(TreeNum %in% mrs4_data_mainCanopy$TreeNum)
+
+# print the number of trees with stem locations and Main Canopy height class
+print(paste0("There are ", as.character(length(mrs4point_mainCanopy$TreeNum)), 
+             " trees in the MRS4point shapefile designated as the Main Canopy height class"))
+
+ggplot2::ggplot() + 
+  ggplot2::geom_sf(data = mrs4point_mainCanopy, size = 1, color = "black") + 
+  ggtitle("MRS4point.shp filtered for Main Canopy Tree Numbers") + 
+  coord_sf()
+
+```
+
+```{r newMRSpoint, eval=FALSE, include=FALSE}
+
+# when the "newMRS4point.shp" file is used and checked,
+# there are no trees that have the Main Canopy height class! 
+# so I won't be using this shapefile for now. 
+
+# the "newMRS4point.shp" feature class contains point locations
+# for each numbered tree (TreeNum attribute)
+mrs4point_layer <- "newMRS4point.shp"
+
+
+mrs4point <- sf::st_read(paste0(input_dir, mrs4point_layer))
+
+# print the number of trees with stem locations in the MRS4point.shp file
+print(paste0("There are ", as.character(length(mrs4point$TreeNum)), 
+             " trees in the MRS4point shapefile"))
+
+# plot the tree points
+ggplot2::ggplot() + 
+  ggplot2::geom_sf(data = mrs4point, size = 1, color = "black") + 
+  ggtitle("MRS4point.shp") + 
+  coord_sf()
+
+# filter the tree point shapefiles for entries with matching tree numbers
+# to the main canopy data (h3 == 1 from earlier)
+mrs4point_mainCanopy <- mrs4point %>% 
+              dplyr::filter(TreeNum %in% mrs4_data_mainCanopy$TreeNum)
+
+# print the number of trees with stem locations and Main Canopy height class
+print(paste0("There are ", as.character(length(mrs4point_mainCanopy$TreeNum)), 
+             " trees in the MRS4point shapefile designated as the Main Canopy height class"))
+
+```
+
+
+Now that we know which Tree Numbers are designated as the Main Canopy height class and also have stem locations in the shapefile, let's add a taxonID attribute to each point in the shapefile to keep track of its species. 
+
+```{r taxonID_cleaning}
+# create a look-up table (LUT) where the first column
+# contains the taxonID codes and second column contains correspnding Tree Number.
+taxonID_TreeNum_lut <- data.frame(taxonID = mrs4_data_mainCanopy$taxonID, 
+                                  TreeNum = as.numeric(mrs4_data_mainCanopy$TreeNum))
+
+# get the indices where the Tree Numbers in the point shapefile 
+# match with Tree Numbers in the tree data 
+idx <- match(mrs4point_mainCanopy$TreeNum, taxonID_TreeNum_lut$TreeNum)
+mrs4point_mainCanopy$taxonID <- taxonID_TreeNum_lut[idx, "taxonID"]
+
+# the species codes are different from the taxonID list used by NEON.
+# let's adjust them to be the same. PIEN entries already match.  
+# first, remove the factors so the taxonID values can be modified as characters.
+mrs4point_mainCanopy$taxonID <- as.character(mrs4point_mainCanopy$taxonID)
+mrs4point_mainCanopy$taxonID[mrs4point_mainCanopy$taxonID=="ABLA"] <- "ABLAL"
+mrs4point_mainCanopy$taxonID[mrs4point_mainCanopy$taxonID=="PICO"] <- "PICOL"
+mrs4point_mainCanopy$taxonID[mrs4point_mainCanopy$taxonID=="PIFL"] <- "PIFL2"
+
+# filter the entries to species in the taxonID list 
+# (remove the UNKN species entries)
+mrs4point_mainCanopy <- mrs4point_mainCanopy %>% dplyr::filter(taxonID %in% taxonList)
+
+# take another look at the number of trees per taxonID 
+plyr::count(mrs4point_mainCanopy, 'taxonID') %>%
+  knitr::kable() %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover",
+                                                  "condensed"),
+                            full_width = F,
+                            position = "left")
+```
+
+Plot the stem points at MRS-04 designated as the Main Canopy height class and color them based on their species (taxon ID). 
+```{r}
+ggplot2::ggplot() + 
+  ggplot2::geom_sf(data = mrs4point_mainCanopy, 
+                   aes(colour=taxonID),
+                   size = 1) + 
+  ggtitle("MRS-04 Main Canopy stem points colored by species") + 
+  coord_sf() +
+  scale_color_brewer(palette = "Spectral")
+```
+
+# Random Forest Classification
+
+In theory, we know the species at each of the point locations in the plot above.
+
+The code below extracts features from the remote sensing data cube a
