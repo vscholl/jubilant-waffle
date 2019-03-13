@@ -13,9 +13,24 @@ library(plyr)
 library(dplyr)
 library(sf)
 library(ggplot2)
+library(stringr) # for creating ribbon plot
 
 # set working directory
 setwd("~/github/jubilant-waffle/code/")
+
+# load any local functions in external files 
+source("supporting_functions.R")
+
+# code for NEON site 
+site_code <- 'NIWO'
+
+# define the "bad bands" wavelength ranges in nanometers, where atmospheric 
+# absorption creates unreliable reflectance values. 
+bad_band_window_1 <- c(1340, 1445)
+bad_band_window_2 <- c(1790, 1955)
+
+#specify output directory 
+out_dir <- paste0('../output/', site_code, '/')
 
 # list of taxon IDs present at the NEON NIWO site
 taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
@@ -32,8 +47,7 @@ mrs4_filename <- "../data/NIWO/tom_mrs04/Veblen_LTER_PP_Data_03262018_MRS04.csv"
 mrs4_data <- read.csv(mrs4_filename)
 
 # filter the data for entries with hc3 == 1
-# hc3 column:
-# Height class estimated during re-measurement in 2016.  
+# hc3 column: Height class estimated during re-measurement in 2016.  
 # 1 = main canopy, 2 = intermediate, 3 = subcanopy
 mrs4_data_mainCanopy <- mrs4_data %>% dplyr::filter(hc3==1) %>% 
                           # convert from list to data frame 
@@ -42,6 +56,9 @@ mrs4_data_mainCanopy <- mrs4_data %>% dplyr::filter(hc3==1) %>%
                             dplyr::rename(taxonID = Sp.,
                                           TreeNum = Tree.)
 
+# These taxon ID codes are different from the NEON taxon ID codes -
+# these will be adjusted later. 
+
 # count the number of trees per taxon ID in the main canopy
 plyr::count(mrs4_data_mainCanopy, 'taxonID') %>%
   knitr::kable() %>%
@@ -49,9 +66,6 @@ plyr::count(mrs4_data_mainCanopy, 'taxonID') %>%
                                                   "condensed"),
                             full_width = F,
                             position = "left")
-
-# These taxon ID codes are different from the NEON taxon ID codes -
-# these will be adjusted later. 
 ```
 
 ## Georeferenced tree point locations 
@@ -69,10 +83,10 @@ mrs4point <- sf::st_read(paste0(input_dir, mrs4point_layer))
 print(paste0("There are ", as.character(length(mrs4point$TreeNum)), 
              " trees in the MRS4point shapefile"))
 
-# plot the tree points
+# plot all tree stem points
 ggplot2::ggplot() + 
   ggplot2::geom_sf(data = mrs4point, size = 1, color = "black") + 
-  ggtitle("MRS4point.shp") + 
+  ggtitle("All stem points within MRS4point.shp") + 
   coord_sf()
 
 # The other shapefiles in the input_dir contain sapling measurements. 
@@ -178,8 +192,62 @@ ggplot2::ggplot() +
   scale_color_brewer(palette = "Spectral")
 ```
 
+```{r plot_stems_on_rgb}
+
+# read RGB tile that contains the MRS-04 plot
+rgb_filename <- "../data/NIWO/rgb/2017_NIWO_1_452000_4432000_image.tif"
+
+rgb_red <- raster::raster(rgb_filename, band = 1) 
+rgb_green <- raster::raster(rgb_filename, band = 2) 
+rgb_blue <- raster::raster(rgb_filename, band = 3) 
+rgb_stack <- raster::stack(rgb_red,rgb_green, rgb_blue)
+rgb_cropped <- raster::crop(rgb_stack, as(mrs4point_mainCanopy, 'Spatial'))
+raster::plotRGB(rgb_cropped, r = 1, g = 2, b = 3)
+points(as(mrs4point_mainCanopy, 'Spatial'), pch = 16, cex = 0.5)
+```
+
+
 # Random Forest Classification
 
 In theory, we know the species at each of the point locations in the plot above.
+The code below extracts features from the remote sensing data cube and run the random forest classifier to predict species, then compare to the known species. 
 
-The code below extracts features from the remote sensing data cube a
+```{r}
+# read stacked AOP data
+stacked_aop_filename <- "../data/NIWO/stacked_aop_data/stacked_aop_data_452000_4432000.rds"
+stacked_aop_data <- readRDS(file = stacked_aop_filename)
+
+# convert from SF to Spatial object to use the raster::extract function
+mrs4point_mainCanopy_Sp <- sf::as_Spatial(mrs4point_mainCanopy,
+                                  IDs = as.character(mrs4point_mainCanopy$TreeNum))
+
+
+# extract all layers for each pixel in the shapefile
+extracted_spectra <- raster::extract(stacked_aop_data, 
+                                     mrs4point_mainCanopy_Sp, 
+                                     df = TRUE)
+
+extracted_spectra$TreeNum <- mrs4point_mainCanopy_Sp$TreeNum
+extracted_spectra$taxonID <- mrs4point_mainCanopy_Sp$taxonID
+extracted_spectra$X.1 <- 0
+extracted_spectra$X <- 0
+extracted_spectra$Y <- 0
+
+
+# write extracted spectra to file 
+extracted_features_filename <- paste0(out_dir, "MRS04_extracted_features.csv")
+write.csv(extracted_spectra, 
+              file = extracted_features_filename) 
+
+
+# read text file containing wavelengths 
+wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
+                                           sep="\n",
+                                           skip = 1,
+                                           col.names = 'wavelength')))
+
+# read random forest classifier, variable name rf_model
+load("../output/NIWO/rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6/rf_model_allPolygons_halfDiameter.RData")
+
+```
+
