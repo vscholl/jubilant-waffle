@@ -14,6 +14,7 @@ library(dplyr)
 library(sf)
 library(ggplot2)
 library(stringr) # for creating ribbon plot
+library(stats)
 
 # set working directory
 setwd("~/github/jubilant-waffle/code/")
@@ -212,16 +213,35 @@ points(as(mrs4point_mainCanopy, 'Spatial'), pch = 16, cex = 0.5)
 In theory, we know the species at each of the point locations in the plot above.
 The code below extracts features from the remote sensing data cube and run the random forest classifier to predict species, then compare to the known species. 
 
+## Extract features
+
+For each stem location, extract features from the AOP remote sensing data cube. 
+
 ```{r extract_features}
 # read stacked AOP data
 stacked_aop_filename <- "../data/NIWO/stacked_aop_data/stacked_aop_data_452000_4432000.rds"
 stacked_aop_data <- readRDS(file = stacked_aop_filename)
 
-# convert from SF to Spatial object to use the raster::extract function
-mrs4point_mainCanopy_Sp <- sf::as_Spatial(mrs4point_mainCanopy,
-                                  IDs = as.character(mrs4point_mainCanopy$TreeNum))
+# add columns for the X,Y location of each tree 
+shp_coords <- mrs4point_mainCanopy %>% 
+      sf::st_coordinates() %>% 
+      as.data.frame()
 
-# TO DO: FILTER SHAPEFILE FOR ONLY THE TREES WITHIN THE CURRENT TILE
+# add new columns for the tree location coordinates 
+mrs4point_mainCanopy$X <- shp_coords$X
+mrs4point_mainCanopy$Y <- shp_coords$Y
+
+# filter shapefile for only the trees within the current tile
+trees_in <- mrs4point_mainCanopy %>% 
+      dplyr::filter(X >= stacked_aop_data@extent[1] & 
+                    X < stacked_aop_data@extent[2] & 
+                    Y >= stacked_aop_data@extent[3] & 
+                    Y  < stacked_aop_data@extent[4])
+print(paste0(as.character(nrow(trees_in))," trees in current tile"))
+
+# convert from SF to Spatial object to use the raster::extract function
+mrs4point_mainCanopy_Sp <- sf::as_Spatial(trees_in,
+                                  IDs = as.character(trees_in$TreeNum))
 
 # extract all layers for each pixel in the shapefile
 extracted_spectra <- raster::extract(stacked_aop_data, 
@@ -230,17 +250,21 @@ extracted_spectra <- raster::extract(stacked_aop_data,
 
 extracted_spectra$TreeNum <- mrs4point_mainCanopy_Sp$TreeNum
 extracted_spectra$taxonID <- mrs4point_mainCanopy_Sp$taxonID
-extracted_spectra$X.1 <- 0
-extracted_spectra$X <- 0
-extracted_spectra$Y <- 0
 
+# Remove any spectra that have a height == 0
+print(paste0(as.character(sum(extracted_spectra$chm==0)), 
+               " pixels have a height of 0 in the CHM"))
+print("Removing these rows from the training set ... ")
+# also reset the factor levels (in case there are dropped taxonID levels)
+extracted_spectra <- extracted_spectra %>% filter(chm>0) %>% droplevels()
 
 # write extracted spectra to file 
 extracted_features_filename <- paste0(out_dir, "MRS04_extracted_features.csv")
 write.csv(extracted_spectra, 
-              file = extracted_features_filename) 
+          file = extracted_features_filename) 
 ```
 
+The spectral reflectance values are stored in columns starting with "X" (for example, X552 corresponds to the 551.5494nm band in the hyperspectral data set). Create a lookup table that matches each column name with the corresponding wavelength. Remove the "bad bands" where atmospheric absorption is high. 
 
 ```{r rf}
 # read text file containing wavelengths 
@@ -249,15 +273,224 @@ wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
                                            skip = 1,
                                            col.names = 'wavelength')))
 
+# remove the band bands where atmospheric absorption leads to low SNR
+remove_bands <- wavelengths[(wavelengths > bad_band_window_1[1] & 
+                                 wavelengths < bad_band_window_1[2]) | 
+                                (wavelengths > bad_band_window_2[1] & 
+                                   wavelengths < bad_band_window_2[2])]
+  
+# create a LUT that matches actual wavelength values with the column names,
+# X followed by the rounded wavelength values. Remove the rows that are 
+# within thebad band ranges. 
+wavelength_lut <- data.frame(wavelength = wavelengths,
+                             xwavelength = paste0("X", 
+                                                  as.character(round(wavelengths))),
+                             stringsAsFactors = FALSE) 
+```
+
+## Ribbon Plot 
+
+Compare the mean spectral reflectance per species. The shading represents +/- one standard deviation. 
+
+```{r ribbon_plot, include = FALSE, results=TRUE}
+# filter the columns to only keep those with spectral reflectance,
+# which start with "X", for instance "X381", "X386"...
+spectra_all <- extracted_spectra %>% 
+  select( colnames(extracted_spectra)[ grepl( "X", names(extracted_spectra))] ) 
+  
+  
+# calculate mean and standard deviation reflectance per species
+mean_reflectance <- stats::aggregate(spectra_all, 
+                                     by = list(taxonID = extracted_spectra$taxonID),
+                                     FUN = mean) 
+sd_reflectance <- stats::aggregate(spectra_all,
+                                   by = list(taxonID = extracted_spectra$taxonID),
+                                   FUN = sd)
+
+# use the gather function makes wide data longer:
+# https://uc-r.github.io/tidyr 
+# so the reflectance data can easily be grouped by species, 
+# and the mean/min/max reflectance values can be selected for a ribbon plot. 
+mean_refl_tidy <- tidyr::gather(mean_reflectance,
+                                key = xwavelength,
+                                value = "mean_reflectance",
+                                X381:X2510) %>%
+  dplyr::left_join(wavelength_lut, by="xwavelength") 
+
+# add on the SD reflectance columns with the same format 
+sd_refl_tidy <- tidyr::gather(sd_reflectance,
+                              key = xwavelength,
+                              value = "sd_reflectance",
+                              X381:X2510)
+
+# combine the mean, min, man reflectance data into one long data frame
+refl_tidy <- merge.data.frame(mean_refl_tidy,
+                              sd_refl_tidy) %>% 
+  select(-xwavelength) %>%          # remove the Xwavelength values 
+  select(wavelength, everything())  # reorder to wavelength column is first
+
+
+# remove the first reflectance value(s) which are often noisy 
+refl_tidy <- refl_tidy[refl_tidy$wavelength > 385,]
+# remove the bad bands 
+refl_tidy$mean_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+refl_tidy$sd_reflectance[refl_tidy$wavelength %in% remove_bands] <- NA
+
+
+# add and subtract one standard deviation from the mean 
+refl_tidy$mean_plus_sd <- refl_tidy$mean_reflectance + refl_tidy$sd_reflectance
+refl_tidy$mean_minus_sd <- refl_tidy$mean_reflectance - refl_tidy$sd_reflectance
+# set any negative values to zero for proper plotting 
+refl_tidy$mean_minus_sd[refl_tidy$mean_minus_sd<0] <- 0
+
+# specify the colors for the reflectance curves & shading around them 
+shading_colors <- c("#d7191c", "#fdae61", "#abdda4", "#2b83ba")
+species <- taxonList #alphabetical so colors match plot above
+shading_alpha <- 0.4
+
+# specify maximum y value for the spectral reflectance ribbon plots
+y_max <- max(refl_tidy$mean_plus_sd)
+
+# generate the ribbon plot
+ggplot(refl_tidy, 
+       aes(x = wavelength, y = mean_reflectance, color = taxonID)) + 
+  
+  # ABLAL
+  geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[1], ],
+              aes(ymin = mean_minus_sd,
+                  ymax = mean_plus_sd), # std dev shading
+              colour=NA,
+              alpha = shading_alpha,
+              fill = shading_colors[1],
+              show.legend = F) + 
+  
+  # PICOL
+  geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[2], ],
+              aes(ymin = mean_minus_sd,
+                  ymax = mean_plus_sd), # std dev shading
+              colour=NA,
+              alpha = shading_alpha,
+              fill = shading_colors[2],
+              show.legend = F) + 
+  
+  # PIEN
+  geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[3], ],
+              aes(ymin = mean_minus_sd,
+                  ymax = mean_plus_sd), # std dev shading
+              colour=NA,
+              alpha = shading_alpha,
+              fill = shading_colors[3],
+              show.legend = F) + 
+  
+  # PIFL2
+  geom_ribbon(data = refl_tidy[refl_tidy$taxonID == species[4], ],
+              aes(ymin = mean_minus_sd,
+                  ymax = mean_plus_sd), # std dev shading
+              colour=NA,
+              alpha = shading_alpha,
+              fill = shading_colors[4],
+              show.legend = F) + 
+  
+  
+  # mean reflectance line
+  # placing this after the ribbon shading so the mean curves are visible
+  geom_line(size = 0.5, alpha = 1) + 
+  
+  scale_color_manual(values = shading_colors) + 
+  
+  # hide the "alpha" legend
+  guides(alpha=FALSE) + 
+  
+  # label X and Y axes 
+  labs(x = "wavelength (nm)", y = "reflectance") + 
+  
+  # set the y axis range to be consistent between plots
+  ylim(0,y_max) + 
+  
+  # main plot title  
+  ggtitle(paste0("MRS-04 Mean spectral reflectance per species: \n",
+                 # std dev shading
+                 "(shading shows one standard deviation from mean refl range per wavelength)"))
+
+# write plot to file 
+ggsave(paste0(out_dir,"/figures/","MRS04_ribbon_plot.png"), 
+       width = 10, height = 6)
+
+```
+
+## Prepare the input data for RF classifier 
+
+Select which features will be used.
+Calculate Principal Components to reduce the dimensionality of the spectral reflectance data. 
+
+```{r}
 # read random forest classifier, variable name rf_model
 load("../output/NIWO/rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6/rf_model_allPolygons_halfDiameter.RData")
 
-# read the values extracted from the data cube
-df_orig <- read.csv(extracted_features_filename)
-  
-# Remove any spectra that have a height == 0
-print(paste0(as.character(sum(df_orig$chm==0)), 
-               " pixels have a height of 0 in the CHM"))
-print("Removing these rows from the training set ... ")
+# features to use in the RF models.
+# this list is used to filter the columns of the data frame,
+# to remove the ones containing other metadata per tree from the model. 
+featureNames <- c("taxonID", 
+                  #wavelength_lut$xwavelength, # no need to keep bands since using PCA
+                  "chm", 
+                  "slope", 
+                  "aspect",
+                  "ARVI",
+                  "EVI",
+                  "NDLI",
+                  "NDNI",
+                  "NDVI",
+                  "PRI",
+                  "SAVI",
+                  "rgb_meanR",
+                  "rgb_meanG",
+                  "rgb_meanB",
+                  "rgb_mean_sd_R",
+                  "rgb_mean_sd_G",
+                  "rgb_mean_sd_B")
+
+# PCA - Principal Component Analysis
+# isolate the reflectance features
+hs <- extracted_spectra %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
+hs_pca <- stats::prcomp(hs, center = TRUE, scale. = TRUE)
+
+#summary(hs_pca)
+# This shows the proportion of variance explained by each PC.
+# PC 1 - 0.7997
+# PC 2 - 0.1608
+# Cumulative proportion explained by PC1 and PC2: 0.9605
+
+# filter the data to contain the features of interest 
+features <- extracted_spectra %>% 
+    dplyr::select(featureNames)
+
+# add first n PCs to features data frame
+nPCs <- 2
+features <- cbind(features, hs_pca$x[,1:nPCs]) 
+
+
+# visualize where each sample falls on a plot with PC2 vs PC1 
+    ggbiplot::ggbiplot(hs_pca, 
+                       choices = 1:2, # which PCs to plot
+                       obs.scale = 1, var.scale = 1, # scale the observations and variables 
+                       var.axes=FALSE, # remove arrows 
+                       groups = extracted_spectra$taxonID, # color the points by species
+                       ellipse = TRUE, # draw ellipse around each group
+                       circle = TRUE # draw circle around center of data set
+                        )   + 
+      ggtitle("PCA biplot, PC1 and PC2") + 
+      scale_color_brewer(palette="Spectral")
+```
+
+## Predict species using RF classifier 
+
+```{r}
+predValidation <- stats::predict(rf_model, features, type = "class")
+
+confusionTable <- table(predValidation, features$taxonID)
+print(confusionTable)
+
+print(paste0("overall accuracy predicting validation set: ",
+  as.character(sum(predValidation == features$taxonID) / length(features$taxonID))))
 ```
 
