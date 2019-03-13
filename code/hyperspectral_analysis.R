@@ -32,7 +32,7 @@ taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
 check_create_dir('../output/') # create top level "output" directory
 out_dir <- paste0('../output/', site_code, '/')
 check_create_dir(out_dir) # create output folder for site
-
+check_create_dir(paste0(out_dir,"figures/")) # create output figures folder
 
 # shapefile sets to test --------------------------------------------------
 
@@ -117,6 +117,8 @@ aspect_dir <- paste0('../data/', site_code, '/aspect/')
 rgb_dir <- paste0('../data/', site_code, '/rgb/')
 # vegetation index .tifs 
 vegIndices_dir <- paste0('../data/', site_code, '/vegIndices/') 
+# output directory for stacked AOP data
+stacked_aop_data_dir <- paste0('../data/',site_code, '/stacked_aop_data/')
 
 # list the files in each data directory; filter results based on file type
 # hyperspectral data - list the .h5 files 
@@ -164,9 +166,10 @@ for (h5 in h5_list) {
   # shapefiles). The process of creating a rasterstack takes a while for 
   # each tile, so after creating each rasterstack once, each object gets 
   # written to a file. 
-  
+
   # Build up the rasterstack filename by parsing out the easting/northing
   # coordinates from the current h5 filename.
+  # (this rasterstack just contains the hyperspectral layers)
   
   # parse the UTM easting and northing values from the current h5 filename
   easting <- stringr::str_split(tail(str_split(h5, "/")[[1]],n=1),"_")[[1]][5]
@@ -174,6 +177,24 @@ for (h5 in h5_list) {
   # combine them with an underscore; use this to find corresponding tiles 
   # of various remote sensing data
   east_north_string <- paste0(easting,"_",northing)
+  
+  
+  stacked_aop_data_filename = paste0(stacked_aop_data_dir, "stacked_aop_data_",
+                                     east_north_string, ".rds")
+  # check if a .rds file already exists for the current feature data cube
+  if (file.exists(stacked_aop_data_filename)){
+    
+    # if it exists, read that instead of re-generating the same rasterstack.
+    message("reading stacked_aop_data (already created for current tile)...")
+    
+    # restore / read the rasterstack from file
+    stacked_aop_data <- readRDS(file = stacked_aop_data_filename)
+    
+  } else{
+    
+    # if it doesn't exist, create the features from the aop data to file 
+    message("creating stacked_aop_data for current tile...")
+    
   
   
   # hyperspectral and lidar features ----------------------------------------
@@ -327,13 +348,41 @@ for (h5 in h5_list) {
   extent(pixelNumbers) <- extent(s)
   names(pixelNumbers) <- "pixelNumber"
   
+  # Create similar layers to keep track of the tile where the pixel is located
+  print("Creating layers for easting and northing per pixel...")
+  eastingID <- rep(as.numeric(easting), times = (nrow(s) * ncol(s)))
+  northingID <- rep(as.numeric(northing), times = (nrow(s) * ncol(s)))
+  # reshape to be two-dimensional
+  dim(eastingID) <- c(nrow(s),ncol(s))
+  dim(northingID) <- c(nrow(s),ncol(s))
+  # create rasters to contain the easting and northing values
+  eastingIDs <- raster::raster(eastingID, crs = crs(s))
+  northingIDs <- raster::raster(northingID, crs = crs(s))
+  # assign extent and CRS to match the other layers in the stack
+  extent(eastingIDs) <- extent(s)
+  extent(northingIDs) <- extent(s)
+  names(eastingIDs) <- "eastingIDs"
+  names(northingIDs) <- "northingIDs"
+  
   
   # now, all of the hyperspectral data files have been read in for the current
   # tile. add each one to the hyperspectral data stack along with the 
   # layer to keep track pixel number within the tile. 
   stacked_aop_data <- raster::addLayer(s, chm, slope, aspect, vegIndices, 
-                                       rgb_features, pixelNumbers)
+                                       rgb_features, pixelNumbers, 
+                                       eastingIDs, northingIDs)
   print("Stacked AOP data for current tile. ")
+  
+  # save the stacked AOP data to file for easy clipping later
+  saveRDS(stacked_aop_data, file = stacked_aop_data_filename)
+  
+  }
+  
+  
+  
+  
+  
+  
   
 
   # plot rasters ------------------------------------------------------------
@@ -586,6 +635,9 @@ for(i in 1:nrow(shapefileLayerNames)){
   distances <- jmDist(extracted_features_filename)
   print(distances)
   
+  # Error in solve.default(sigma, m) : 
+  # system is computationally singular: reciprocal condition number = 4.4099e-22
+  
 }
 
 
@@ -669,8 +721,6 @@ for (i in 1:n.class) {
   classes <- c(classes, rep(i, n[i]))
 }
 
-
-
 # Given a set of bands (as the columns of x) and a grouping variable in `class`,
 # compute the class means and covariance matrices (the "signatures").
 classes.stats <- by(x, classes, function(y) list(mean=apply(y, 2, mean), cov=cov(y)))
@@ -686,8 +736,6 @@ for (i in 2:n.class) {
 }
 print(distances)
 #------------------------------------------------------------------------------------#
-
-
 
 # Jeffries-Matusita distance using NIWO spectra ---------------------------
 
@@ -731,97 +779,10 @@ print(distances)
 
 
 
-# Interspecies comparison Boxplots of variables per species -------------------
-
-gg_alpha <- 1
-
-# ASPECT 
-ggplot(data = features, aes(x = taxonID, y = aspect, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: Aspect")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ASPECT_",shapefileLayerNames$description[i],".png"))
-
-# SLOPE 
-ggplot(data = features, aes(x = taxonID, y = slope, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: Slope")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_SLOPE_",shapefileLayerNames$description[i],".png"))
 
 
-# CHM 
-ggplot(data = features, aes(x = taxonID, y = chm, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: CHM-derived height")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_CHM_",shapefileLayerNames$description[i],".png"))
 
 
-# NDVI 
-ggplot(data = features, aes(x = taxonID, y = NDVI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: NDVI")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDVI_",shapefileLayerNames$description[i],".png"))
-
-
-# ARVI
-ggplot(data = features, aes(x = taxonID, y = ARVI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: ARVI")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_ARVI_",shapefileLayerNames$description[i],".png"))
-
-
-# PRI 
-ggplot(data = features, aes(x = taxonID, y = PRI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: PRI")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_PRI_",shapefileLayerNames$description[i],".png"))
-
-
-# NDLI
-ggplot(data = features, aes(x = taxonID, y = NDLI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: NDLI")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDLI_",shapefileLayerNames$description[i],".png"))
-
-
-# NDNI
-ggplot(data = features, aes(x = taxonID, y = NDNI, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: NDNI")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_NDNI_",shapefileLayerNames$description[i],".png"))
-
-
-# rgb_mean_sd_B
-ggplot(data = features, aes(x = taxonID, y = rgb_mean_sd_B, colour = taxonID)) +
-  geom_boxplot(alpha = gg_alpha, notch = FALSE, varwidth = TRUE, outlier.shape = NA) +
-  geom_jitter(width = 0.2, size = 0.5) + 
-  scale_color_brewer(palette="Spectral") + 
-  ggtitle("Interspecies boxplot comparison: rgb_mean_sd_B")
-
-ggplot2::ggsave(paste0(out_dir, outDescription, "boxplot_rgb_mean_sd_B_",shapefileLayerNames$description[i],".png"))
 
 
 
@@ -857,27 +818,11 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
-
-# specific string to name a directory to hold classification output files
-#outDescription <- "rf_allSamplesPerClass_ntree500_validationSet/"
-outDescription <- "rf_allSamplesPerClass_ntree500/"
-outDescription <- "rf_allSamplesPerClass_ntree1000/"
-outDescription <- "rf_allSamplesPerClass_ntree500_pcaInsteadOfWavelengths/"
-outDescription <- "rf_allSamplesPerClass_ntree500_pca4InsteadOfWavelengths_keep10MostImpVar/"
-outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths_keep10MostImpVar/"
-outDescription <- "rf_allSamplesPerClass_ntree2000_pca2InsteadOfWavelengths/"
-outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths/" 
-outDescription <- "rf_allSamplesPerClass_ntree500_pca2InsteadOfWavelengths/" 
-#outDescription <- "rf_allSamplesPerClass_ntree500_pca4InsteadOfWavelengths/" 
-#outDescription <- "rf_allSamplesPerClass_ntree500/" 
-outDescription <- "rf_allSamplesPerClass_ntree500_pca2InsteadOfWavelengths_nVar6/" 
-
-
-
+outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6/" 
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
-ntree <- 500
+ntree <- 5000
 
 # boolean variable. if TRUE, select random minSamples per class to reduce bias
 randomMinSamples <- FALSE
@@ -951,7 +896,7 @@ for(i in 1:nrow(shapefileLayerNames)){
                                xwavelength = paste0("X", 
                                                     as.character(round(wavelengths))),
                                stringsAsFactors = FALSE) %>% 
-    filter(!wavelength %in% remove_bands)
+    filter(!wavelength %in% remove_bands) 
   
   # features to use in the RF models.
   # this list is used to filter the columns of the data frame,
@@ -1340,4 +1285,8 @@ varImpCounts <- as.data.frame(table(c(t(rfVarImp[,2:13]))))
 
 ggplot(data = varImpCounts, aes(Var1,Freq)) + 
   geom_col()
+
+
+
+
   
