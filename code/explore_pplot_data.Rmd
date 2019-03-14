@@ -1,20 +1,25 @@
 ---
-title: "explore_pplot_data"
+title: "Exploring MRS-04 Permanent Plot Data for Random Forest Classification"
 author: "Victoria Scholl"
-date: "3/12/2019"
-output: html_document
+date: "3/13/2019"
+output:
+  html_document: 
+    theme: cosmo
+  #pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
                       warning = FALSE,
-                      message = FALSE)
+                      message = FALSE,
+                      results = 'hide')
 library(plyr)
 library(dplyr)
 library(sf)
 library(ggplot2)
 library(stringr) # for creating ribbon plot
 library(stats)
+library(randomForest)
 
 # set working directory
 setwd("~/github/jubilant-waffle/code/")
@@ -34,28 +39,40 @@ bad_band_window_2 <- c(1790, 1955)
 out_dir <- paste0('../output/', site_code, '/')
 
 # list of taxon IDs present at the NEON NIWO site
-taxonList <- c("ABLAL","PICOL","PIEN","PIFL2")
+taxonList <- c("ABLAL","PICOL","PIEN","PIFL2") 
 ```
 
-# Exploring MRS-04 Data
+## Permanent Plots at Niwot Ridge
 
-## Permanent Plot measurements
+In addition to the annual field-based sampling and airborne data collection that occurs at the NIWO site as part of the NEON project, the Niwot Ridge Long Term Ecological Research (LTER) project also has a presence here. Permanent forest plots (described in Veblen 1986, Smith et al. 2015) were established on Niwot Ridge in 1982 by T. Veblen’s Lab (Geography Department, University of Colorado Boulder) and were incorporated into the NSF Niwot-Ridge LTER Project in 2015 where tree species, size, health, and other metrics of interest have been measured and mapped continuously for scientific research. These plots cover a diverse range of topographic position, species composition, stand ages, and densities of subalpine forests, thus offering a valuable source of additional tree-level data within the NEON AOP area of coverage.
 
-```{r mrs4_pp_data}
-# read the Excel file with MRS-04 Permanent Plot measurements
-# I saved a .csv with the MRS4 sheet
+## Permanent Plot Tree Data
+
+A series of measurements are collected for trees within each plot including *hc3* (height class estimated during re-measurement in 2016) and *dead* (1 is a dead tree, 0 is a live tree). Height class values can be 1 (main canopy), 2 (intermediate), or 3 (subcanopy)Each tree has a unique integer ID number. The code below reads the spreadsheet data for the MRS-04 plot and filters the tree entries to retain those designated as Main Canopy and remove any dead trees. 
+
+```{r mrs4_pp_data, results=TRUE}
+# read the Excel file with MRS-04 Permanent Plot measurements.
+# the original .xlsx file contains 
+# (I saved a .csv with the MRS4 sheet)
 mrs4_filename <- "../data/NIWO/tom_mrs04/Veblen_LTER_PP_Data_03262018_MRS04.csv"
 mrs4_data <- read.csv(mrs4_filename)
 
-# filter the data for entries with hc3 == 1
-# hc3 column: Height class estimated during re-measurement in 2016.  
-# 1 = main canopy, 2 = intermediate, 3 = subcanopy
-mrs4_data_mainCanopy <- mrs4_data %>% dplyr::filter(hc3==1) %>% 
-                          # convert from list to data frame 
-                          as.data.frame() %>% 
-                            # rename the Sp. and Tree. columns
-                            dplyr::rename(taxonID = Sp.,
-                                          TreeNum = Tree.)
+# Take a look at the first 6 rows of the data
+head(mrs4_data[,1:9])
+
+# "hc3"" column: Height class estimated during re-measurement in 2016.  
+# 1 = main canopy, 2 = intermediate, 3 = subcanopy.
+# "dead" column: 0 is alive, 1 is dead"
+mrs4_data_mainCanopy <- mrs4_data %>% 
+                          # keep trees in Main Canopy height class
+                          dplyr::filter(hc3==1) %>% 
+                          # remove dead trees  
+                          dplyr::filter(dead==0) %>% 
+                            # convert from list to data frame 
+                            as.data.frame() %>% 
+                              # rename the Sp. and Tree. columns
+                              dplyr::rename(taxonID = Sp.,
+                                            TreeNum = Tree.)
 
 # These taxon ID codes are different from the NEON taxon ID codes -
 # these will be adjusted later. 
@@ -69,52 +86,50 @@ plyr::count(mrs4_data_mainCanopy, 'taxonID') %>%
                             position = "left")
 ```
 
-## Georeferenced tree point locations 
+## Georeferenced stem map data 
 
-```{r}
+The "MRS4point.shp" file contains georeferenced tree stem points, each with a tree number that corresponds to the the spreadsheet data read in above. The code below reads the shapefile and retains only the stem points with Tree Numbers that are in the Main Canopy height class based on the spreadsheet data. 
+
+```{r read_stem_map}
 # directory containing georeferenced shapefiles at MRS4
 input_dir <- "../data/NIWO/tom_mrs04/mrs04_georeferenced_using_unavco_gps_points/"
 
-# the "MRS4point.shp" feature class contains point locations
+# "MRS4point.shp" feature class contains point locations
 # for each numbered tree (TreeNum attribute)
 mrs4point_layer <- "MRS4point.shp"
 mrs4point <- sf::st_read(paste0(input_dir, mrs4point_layer))
 
-# print the number of trees with stem locations in the MRS4point.shp file
-print(paste0("There are ", as.character(length(mrs4point$TreeNum)), 
-             " trees in the MRS4point shapefile"))
-
-# plot all tree stem points
-ggplot2::ggplot() + 
-  ggplot2::geom_sf(data = mrs4point, size = 1, color = "black") + 
-  ggtitle("All stem points within MRS4point.shp") + 
-  coord_sf()
-
-# The other shapefiles in the input_dir contain sapling measurements. 
-# I will focus on the larger trees for now. 
-```
-
-
-
-```{r filter_treeNum_mrs4point}
 # filter the tree point shapefiles for entries with matching tree numbers
 # to the main canopy data (h3 == 1 from earlier)
 mrs4point_mainCanopy <- mrs4point %>% 
               dplyr::filter(TreeNum %in% mrs4_data_mainCanopy$TreeNum)
+```
 
+```{r results=TRUE}
 # print the number of trees with stem locations and Main Canopy height class
 print(paste0("There are ", as.character(length(mrs4point_mainCanopy$TreeNum)), 
              " trees in the MRS4point shapefile designated as the Main Canopy height class"))
 
+# plot the stem point locations 
 ggplot2::ggplot() + 
   ggplot2::geom_sf(data = mrs4point_mainCanopy, size = 1, color = "black") + 
   ggtitle("MRS4point.shp filtered for Main Canopy Tree Numbers") + 
   coord_sf()
+```
 
+```{r plot_all_stem_points, include=FALSE, eval=FALSE}
+# print the number of trees with stem locations in the MRS4point.shp file
+#print(paste0("There are ", as.character(length(mrs4point$TreeNum)), 
+#             " trees in the MRS4point shapefile"))
+
+# plot all tree stem points
+#ggplot2::ggplot() + 
+#  ggplot2::geom_sf(data = mrs4point, size = 1, color = "black") + 
+#  ggtitle("All stem points within MRS4point.shp") + 
+#  coord_sf()
 ```
 
 ```{r newMRSpoint, eval=FALSE, include=FALSE}
-
 # when the "newMRS4point.shp" file is used and checked,
 # there are no trees that have the Main Canopy height class! 
 # so I won't be using this shapefile for now. 
@@ -292,7 +307,7 @@ wavelength_lut <- data.frame(wavelength = wavelengths,
 
 Compare the mean spectral reflectance per species. The shading represents +/- one standard deviation. 
 
-```{r ribbon_plot, include = FALSE, results=TRUE}
+```{r ribbon_plot, echo = FALSE, results=TRUE}
 # filter the columns to only keep those with spectral reflectance,
 # which start with "X", for instance "X381", "X386"...
 spectra_all <- extracted_spectra %>% 
@@ -415,7 +430,6 @@ ggplot(refl_tidy,
 # write plot to file 
 ggsave(paste0(out_dir,"/figures/","MRS04_ribbon_plot.png"), 
        width = 10, height = 6)
-
 ```
 
 ## Prepare the input data for RF classifier 
@@ -423,7 +437,7 @@ ggsave(paste0(out_dir,"/figures/","MRS04_ribbon_plot.png"),
 Select which features will be used.
 Calculate Principal Components to reduce the dimensionality of the spectral reflectance data. 
 
-```{r}
+```{r, results=TRUE}
 # read random forest classifier, variable name rf_model
 load("../output/NIWO/rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6/rf_model_allPolygons_halfDiameter.RData")
 
@@ -484,7 +498,9 @@ features <- cbind(features, hs_pca$x[,1:nPCs])
 
 ## Predict species using RF classifier 
 
-```{r}
+Using the "best" random forest classifier (determined based on the highest overall accuracy), use the input features for each tree at MRS-04 and classify their species. Then compare the predicted taxon ID for each tree to the *in-situ* taxon ID from the permanent plot data set. Calculate overall accuracy and print the confusion matrix to assess how many of each species were identified correctly/incorrectly.  
+
+```{r, results=TRUE}
 predValidation <- stats::predict(rf_model, features, type = "class")
 
 confusionTable <- table(predValidation, features$taxonID)
