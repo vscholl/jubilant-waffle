@@ -648,9 +648,6 @@ for(i in 1:nrow(shapefileLayerNames)){
   # system is computationally singular: reciprocal condition number = 4.4099e-22
   
 }
-
-
-
 # spectral data with reflectance per wavelength (column), with each
 # row being a different pixel
 x <- features %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
@@ -1159,8 +1156,8 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   # record the users and producer's accuracies for each specie s
   rfUsersProducers <- data.frame(matrix(ncol = 3, nrow = nrow(shapefileLayerNames)))
-  colnames(rfAccuracies) <- c("shapefileDescription", "OA", "K")
-  rfAccuracies$shapefileDescription <- shapefileLayerNames$description
+  #colnames(rfAccuracies) <- c("shapefileDescription", "OA", "K")
+  #rfAccuracies$shapefileDescription <- shapefileLayerNames$description
   
   write("\nOverall Accuracy:", rf_output_file, append=TRUE) #newline
   write(accuracy$PCC, rf_output_file, append=TRUE)
@@ -1299,16 +1296,18 @@ for(i in 1:nrow(shapefileLayerNames)){
     features_gathered$feature_ordered = factor(features_gathered$feature, levels=vars)
     
     # create the multi-plot
-    ggplot(data = features_gathered, aes(x = taxonID, y = value)) + 
+    g <- ggplot(data = features_gathered, aes(x = taxonID, y = value)) + 
       geom_boxplot(aes(fill = taxonID),outlier.size = 0.2) + 
       facet_wrap(. ~ feature_ordered,scales='free',ncol=3) + 
       scale_fill_brewer(palette = "Spectral") + 
       theme(axis.title.x=element_blank(),
             axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) +
+            axis.ticks.x=element_blank(),
+            plot.title = element_text(size = 10)) +
       ggtitle(paste0("Interspecies boxplot comparison of MDA most important features: \n",
                      shapefileLayerNames$description[i]))
-    ggsave(filename = paste0(out_dir,outDescription,"boxplot_impVarMDA_",shapefileLayerNames$description[i],".png"))
+    ggsave(g, filename = paste0(out_dir,outDescription,"boxplot_impVarMDA_",shapefileLayerNames$description[i],".png"),
+           width = 6, height = 5, dpi = 300, units = "in", device='png')
     
     
     # MDG
@@ -1325,16 +1324,18 @@ for(i in 1:nrow(shapefileLayerNames)){
     features_gathered$feature_ordered = factor(features_gathered$feature, levels=vars)
     
     # create the multi-plot
-    ggplot(data = features_gathered, aes(x = taxonID, y = value)) + 
+    g2 <- ggplot(data = features_gathered, aes(x = taxonID, y = value)) + 
       geom_boxplot(aes(fill = taxonID),outlier.size = 0.2) + 
       facet_wrap(. ~ feature_ordered,scales='free',ncol=3) + 
       scale_fill_brewer(palette = "Spectral") + 
       theme(axis.title.x=element_blank(),
             axis.text.x=element_blank(),
-            axis.ticks.x=element_blank()) +
+            axis.ticks.x=element_blank(),
+            plot.title = element_text(size = 10)) +
       ggtitle(paste0("Interspecies boxplot comparison of MDG most important features: \n",
                      shapefileLayerNames$description[i]))
-    ggsave(filename = paste0(out_dir,outDescription,"boxplot_impVarMDGini_",shapefileLayerNames$description[i],".png"))
+    ggsave(g2, filename = paste0(out_dir,outDescription,"boxplot_impVarMDGini_",shapefileLayerNames$description[i],".png"),
+           width = 6, height = 5, dpi = 300, units = "in", device='png')
     
   }
   
@@ -1363,18 +1364,18 @@ print(end_time-start_time)
 
 # create a nice table to summarize the model accuracies 
 #https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html 
-#library(kableExtra)
-#rfAccuracies %>%
-#  kable() %>%
-#  kable_styling(bootstrap_options = c("striped", "hover","condensed", 
-#                                      full_width=F, align = "center"))
+library(kableExtra)
+rfAccuracies %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover","condensed", 
+                                      full_width=F, align = "center"))
 
 #https://www.littlemissdata.com/blog/prettytables
 library(formattable)
 colnames(rfAccuracies) <- c("Shapefile Description",
-                            "OA [%]", "Kappa")
+                            "OOB \nOA [%]", "Independent Validation OA [%]", "Kappa")
 formattable(rfAccuracies, 
-            align =c("l","c","c","c","c"), 
+            #align =c("l","c","c","c","c"), 
             list(`shapefileDescription` = formatter(
               "span", style = ~ style(color = "grey",font.weight = "bold")) 
             ))
@@ -1383,10 +1384,10 @@ formattable(rfAccuracies,
 # VARIABLE IMPORTANCE TABLE  ----------------------------------------------
 
 # count the number of times each variable was listed in the top n important 
-#varImpCounts <- as.data.frame(table(c(t(rfVarImp[,2:13]))))
+varImpCounts <- as.data.frame(table(c(t(rfVarImp[,2:13]))))
 
-#ggplot(data = varImpCounts, aes(Var1,Freq)) + 
-#  geom_col()
+ggplot(data = varImpCounts, aes(Var1,Freq)) + 
+  geom_col()
 
 
 
