@@ -824,8 +824,8 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
-outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_independentValidationSet/" 
 outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
+outDescription <- "rf_allSamplesPerClass_ntree5000_allBandRefl_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 
 check_create_dir(paste0(out_dir,outDescription))
 
@@ -840,7 +840,7 @@ independentValidationSet <- TRUE
 # randomly select this amount of data for training, use the rest for validation
 percentTrain <- 0.8 
 
-pcaInsteadOfWavelengths <- TRUE
+pcaInsteadOfWavelengths <- FALSE
 nPCs <- 2 # number of PCAs to keep 
 
 # keep most important variables and run RF again with reduced feature set 

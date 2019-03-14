@@ -197,8 +197,8 @@ plyr::count(mrs4point_mainCanopy, 'taxonID') %>%
                             position = "left")
 ```
 
-Plot the stem points at MRS-04 designated as the Main Canopy height class and color them based on their species (taxon ID). 
-```{r}
+Plot the stem points at MRS-04 designated as the Main Canopy height class and color them based on their species (taxon ID). Also plot the tree stem points onto the high resolution RGB digital camera image. 
+```{r, echo=FALSE, results=TRUE}
 ggplot2::ggplot() + 
   ggplot2::geom_sf(data = mrs4point_mainCanopy, 
                    aes(colour=taxonID),
@@ -208,7 +208,7 @@ ggplot2::ggplot() +
   scale_color_brewer(palette = "Spectral")
 ```
 
-```{r plot_stems_on_rgb}
+```{r plot_stems_on_rgb, echo=FALSE, results=TRUE}
 
 # read RGB tile that contains the MRS-04 plot
 rgb_filename <- "../data/NIWO/rgb/2017_NIWO_1_452000_4432000_image.tif"
@@ -439,7 +439,7 @@ Calculate Principal Components to reduce the dimensionality of the spectral refl
 
 ```{r, results=TRUE}
 # read random forest classifier, variable name rf_model
-load("../output/NIWO/rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6/rf_model_allPolygons_halfDiameter.RData")
+load("../output/NIWO/rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/rf_model_allPolygons_halfDiameter.RData")
 
 # features to use in the RF models.
 # this list is used to filter the columns of the data frame,
@@ -456,9 +456,9 @@ featureNames <- c("taxonID",
                   "NDVI",
                   "PRI",
                   "SAVI",
-                  "rgb_meanR",
-                  "rgb_meanG",
-                  "rgb_meanB",
+                  #"rgb_meanR",
+                  #"rgb_meanG",
+                  #"rgb_meanB",
                   "rgb_mean_sd_R",
                   "rgb_mean_sd_G",
                   "rgb_mean_sd_B")
