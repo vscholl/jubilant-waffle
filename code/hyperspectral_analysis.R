@@ -10,6 +10,7 @@ library(data.table)
 library(stringr) # str_split function
 library(randomForest) # randomForest function
 library(ggbiplot) # for PCA visualization with a biplot
+library(rfUtilities) # to calculate OA, PA, UA accuracies 
 
 # set working directory
 setwd("~/github/jubilant-waffle/code/")
@@ -626,6 +627,14 @@ for(i in 1:nrow(shapefileLayerNames)){
 
 
 
+
+
+
+
+
+
+
+
 # calculate JM distance - spectral separability ---------------------------
 
 for(i in 1:nrow(shapefileLayerNames)){
@@ -818,7 +827,9 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
-outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6/" 
+outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_independentValidationSet/" 
+outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet/" 
+
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
@@ -828,7 +839,7 @@ ntree <- 5000
 randomMinSamples <- FALSE
 
 # boolean variable. if TRUE, keep separate set for validation
-independentValidationSet <- FALSE 
+independentValidationSet <- TRUE 
 # randomly select this amount of data for training, use the rest for validation
 percentTrain <- 0.8 
 
@@ -860,6 +871,69 @@ rfVarImp$shapefileDescription <- shapefileLayerNames$description
 
 # start the timer
 start_time <- Sys.time()
+
+
+if(independentValidationSet){
+    # randomly select <percentTrain> of data 
+    # from the neon_veg half diameter polygons for training,
+    # use the remaining samples for validation.
+    # keep track of which pixelNumber, easting, northing
+    # that these pixels correspond to. 
+  
+    # read the file with spectra to sample randomly for validation trees 
+    validationSourceFilename <- paste0(out_dir, site_code, 
+                                       "_spectral_reflectance_ALL_",
+                                       shapefileLayerNames$description[5],
+                                       ".csv")
+    # remove any spectra with a height of 0
+    # and remove any factors
+    df_val <- read.csv(validationSourceFilename) %>% 
+                  dplyr::filter(chm>0) %>% 
+                    base::droplevels() 
+    
+    # combine the pixelNumber, easting, and northing into a string
+    # for each row with underscore separation
+    dfIDs <- paste(df_val[,"pixelNumber"],
+                   df_val[,"eastingIDs"],
+                   df_val[,"northingIDs"], 
+                   sep = "_") 
+    
+    # add this as a new column to the data frame 
+    df_val <- df_val %>% mutate(dfIDs = dfIDs)
+    
+    # remove any duplicated spectra from consideration
+    df_val <- df_val[!duplicated(df_val$dfIDs),]
+
+    # randomly sample rows from this data set 
+    set.seed(104)
+    # the number of sampled rows is calculated based on 
+    # percentTrain and the number of rows in the validation set. 
+    # percentTrain may have a value like 0.80 (80% data used to train)
+    train <- sample(nrow(df_val), 
+                    percentTrain*nrow(df_val), 
+                    replace = FALSE)
+    # identify the other 0.20 (20%) of samples for independent validation
+    validationSet <- df_val[-train,]
+    
+    # combine the pixelNumber, easting, and northing into a string
+    # for each row with underscore separation
+    valIDs <- validationSet$dfIDs
+    
+    # in the loop below, when each set of training features is 
+    # prepared for the classifier, any spectra with
+    # pixelNumer_eastingIDs_northingIDs that belong in the validation set
+    # will be removed. 
+    
+  } else{
+    # otherwise, just remove the pixelNumber, eastingIDs and northingIDs
+    # since they should not be input to the classifier. 
+    features <- features %>% 
+                  dplyr::select(-c(pixelNumber, eastingIDs, northingIDs))
+  }
+
+
+
+
 
 # loop through all shapefile sets 
 for(i in 1:nrow(shapefileLayerNames)){ 
@@ -913,12 +987,15 @@ for(i in 1:nrow(shapefileLayerNames)){
                     "NDVI",
                     "PRI",
                     "SAVI",
-                    "rgb_meanR",
-                    "rgb_meanG",
-                    "rgb_meanB",
+                    #"rgb_meanR",
+                    #"rgb_meanG",
+                    #"rgb_meanB",
                     "rgb_mean_sd_R",
                     "rgb_mean_sd_G",
-                    "rgb_mean_sd_B")
+                    "rgb_mean_sd_B",
+                    "pixelNumber",
+                    "eastingIDs",
+                    "northingIDs")
   
   # filter the data to contain only the features of interest 
   features <- df %>% 
@@ -929,6 +1006,8 @@ for(i in 1:nrow(shapefileLayerNames)){
     
     # remove the individual spectral reflectance bands from the training data
     features <- features %>% dplyr::select(-c(wavelength_lut$xwavelength))
+    
+    print(colnames(features))
     
     # PCA: calculate Principal Components 
     hs <- df %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
@@ -966,12 +1045,57 @@ for(i in 1:nrow(shapefileLayerNames)){
   # randomly select <percentTrain> of data for training,
   # use the remaining samples for validation
   if(independentValidationSet){
-    train <- sample(nrow(features), percentTrain*nrow(features), replace = FALSE)
-    trainSet <- features[train,]
-    validationSet <- features[-train,]
-    summary(trainSet)
-    summary(validationSet)
-    features <- trainSet
+    
+    if(i == 1){
+    
+    # filter the data to contain only the features of interest 
+    validationSet <- validationSet %>% 
+      dplyr::select(featureNames)
+    
+    if(pcaInsteadOfWavelengths){
+      # perform PCA
+      # remove the individual band reflectances
+      wl_removed <- validationSet %>% as.data.frame() %>% 
+        dplyr::select(-c(wavelength_lut$xwavelength))
+      
+      # isolate the individual band reflectances
+      val_hs <- validationSet %>% 
+        dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
+      
+      val_hs_pca <- stats::prcomp(val_hs, center = TRUE, scale. = TRUE)
+      summary(val_hs_pca)
+      validationSet <- cbind(wl_removed, val_hs_pca$x[,1:nPCs])
+    }
+    
+    }
+    
+    # concatenate pixel #, easting, and northing 
+    # for an individual entry per pixel in the input imagery,
+    # i.e. "264231_452000_4431000"
+    features$dfIDs <- paste(features[,"pixelNumber"],
+                            features[,"eastingIDs"],
+                            features[,"northingIDs"], 
+                            sep = "_") 
+    
+    print("The following pixelNumber_easting_northing values are ")
+    print("found in the current input set and the validation set: ")
+    print(intersect(features$dfIDs, valIDs))
+    
+    print("Originally this many rows in the features DF: ")
+    print(nrow(features))
+    
+    # remove any spectra that are being kept separate for the 
+    # independent validation set 
+    features <- features[!(features$dfIDs %in% valIDs),]
+    
+    print("After removing pixels that are in the validation set, nrow = ")
+    print(nrow(features))
+    
+    # remove the pixelNumber, easting, and northing columns since they
+    # are not input features to the train the classifier 
+    features <- features %>% 
+        dplyr::select(-c(pixelNumber, eastingIDs, northingIDs, dfIDs))
+    
   }
   
   if(randomMinSamples){
@@ -1024,9 +1148,6 @@ for(i in 1:nrow(shapefileLayerNames)){
   colnames(featureSummary) <- c("taxonID","numberOfSamples")
   capture.output(featureSummary, file = rf_output_file, append=TRUE)
   
-  
-  # use the rfUtilities package to calculate OA, PA, UA accuracies 
-  library(rfUtilities)
   # x = predicted data; y = observed data (class labels) 
   accuracy <- rfUtilities::accuracy(x = rf_model$predicted,
                                     y = rf_model$y)
@@ -1060,27 +1181,14 @@ for(i in 1:nrow(shapefileLayerNames)){
   # TO DO: create a nicely formatted summary data frame 
   # using the confusion matrix, UA, PA, OA.....
   
-  # Parallel randomForest
-  #library(foreach)
-  #rf_startTime <- Sys.time()
-  #test <- foreach(ntree=rep(500, 6), .combine=randomForest::combine,
-  #              .multicombine=TRUE, .packages='randomForest') %dopar% {
-  #                randomForest(as.factor(features$taxonID) ~ .,
-  #                data=features, importance=TRUE, ntree=ntree)
-  #              }
-  #print("randomForest time elapsed: ")
-  #print(Sys.time()-rf_startTime)
-  
-  
-  # plot error as a function of ntrees
-  #plot(rf_model)
-  #legend("topright", colnames(rf_model$err.rate),col=1:5,cex=0.8,fill=1:5)
-  
-  
   # What variables were important? --> Consult the variable importance plot. 
   
   # save varImpPlot to image file. create a filename and png object.  
-  varImpFilename <- paste0(out_dir, outDescription,"varImpPlot_",shapefileLayerNames$description[i],".png")
+  varImpFilename <- paste0(out_dir, 
+                           outDescription,
+                           "varImpPlot_",
+                           shapefileLayerNames$description[i],
+                           ".png")
   png(filename = varImpFilename)
   # make varImpPlot
   randomForest::varImpPlot(rf_model,
@@ -1091,30 +1199,20 @@ for(i in 1:nrow(shapefileLayerNames)){
   save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
                                shapefileLayerNames$description[i],".RData"))
   
-  
-  
-  
-  
-  
-  # use the model to predict the species for the training set 
-  predTrain <- predict(rf_model, features, type = "class")
-  
-  # Checking classification accuracy
-  confusionTable <- table(predTrain, features$taxonID)
-  print(confusionTable)
-  
-  # print overall accuracy
-  # TO DO: modify this for the independent validation set
-  #print(paste0("overall accuracy predicting train set: ",
-  #             as.character(mean(predTrain == features$taxonID))))
-  
   # predict species ID for validation set 
   if(independentValidationSet){
     predValidation <- predict(rf_model, validationSet, type = "class")
     confusionTable <- table(predValidation, validationSet$taxonID)
     print(confusionTable)
+    val_OA <- sum(predValidation == validationSet$taxonID) / 
+      length(validationSet$taxonID)
     print(paste0("overall accuracy predicting validation set: ",
-                 as.character(mean(predValidation == validationSet$taxonID))))
+                 as.character(val_OA)))
+    # write the accuracy summary data frame to file 
+    write.csv(confusionTable,
+              paste0(out_dir, outDescription, 
+                     "rfConfusionMatrix_independentValidationSet_Accuracy_",
+                     as.character(round(val_OA, 3)),".csv"))
   }
   
   
@@ -1245,7 +1343,7 @@ for(i in 1:nrow(shapefileLayerNames)){
 close(rf_output_file)
 
 # write the accuracy summary data frame to file 
-write.csv(rfAccuracies, paste0(out_dir, outDescription, "rfAccuracies.csv"))
+write.csv(rfAccuracies, paste0(out_dir, outDescription, "rfAccuraciesOOB.csv"))
 # write the variable importance summary to file 
 write.csv(rfVarImp, paste0(out_dir, outDescription, "rfVarImp.csv"))
 
