@@ -828,7 +828,7 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
 outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_independentValidationSet/" 
-outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet/" 
+outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 
 check_create_dir(paste0(out_dir,outDescription))
 
@@ -857,8 +857,8 @@ rf_output_file <- file(paste0(out_dir,outDescription,
                                   "rf_model_summaries.txt"), "w")
 
 # create an empty matrix to summarise the model Accuracies
-rfAccuracies <- data.frame(matrix(ncol = 3, nrow = nrow(shapefileLayerNames)))
-colnames(rfAccuracies) <- c("shapefileDescription", "OA", "K")
+rfAccuracies <- data.frame(matrix(ncol = 4, nrow = nrow(shapefileLayerNames)))
+colnames(rfAccuracies) <- c("shapefileDescription", "OA_OOB", "OA_IndVal","K")
 rfAccuracies$shapefileDescription <- shapefileLayerNames$description
 
 # create an empty matrix to summarise the variable importance rankings 
@@ -1154,7 +1154,7 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   # record each accuracy metric in the table for a final comparison.
   # round each value to the nearest decimal place 
-  rfAccuracies$OA[i] <- round(accuracy$PCC, 1) # Overall Accuracy
+  rfAccuracies$OA_OOB[i] <- round(accuracy$PCC, 1) # Overall Accuracy
   rfAccuracies$K[i] <- round(accuracy$kappa, 3) #Cohen's Kappa 
   
   # record the users and producer's accuracies for each specie s
@@ -1211,8 +1211,12 @@ for(i in 1:nrow(shapefileLayerNames)){
     # write the accuracy summary data frame to file 
     write.csv(confusionTable,
               paste0(out_dir, outDescription, 
-                     "rfConfusionMatrix_independentValidationSet_Accuracy_",
+                     "rfConfusionMatrix_independentValidationSet_",
+                     shapefileLayerNames$description[i],"_Accuracy_",
                      as.character(round(val_OA, 3)),".csv"))
+    # write the Overall Accuracy for the independent validation set to the
+    # Accuracies data frame
+    rfAccuracies$OA_IndVal[i] <- round(val_OA*100, 1) # Overall Accuracy
   }
   
   
@@ -1359,11 +1363,11 @@ print(end_time-start_time)
 
 # create a nice table to summarize the model accuracies 
 #https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html 
-library(kableExtra)
-rfAccuracies %>%
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover","condensed", 
-                                      full_width=F, align = "center"))
+#library(kableExtra)
+#rfAccuracies %>%
+#  kable() %>%
+#  kable_styling(bootstrap_options = c("striped", "hover","condensed", 
+#                                      full_width=F, align = "center"))
 
 #https://www.littlemissdata.com/blog/prettytables
 library(formattable)
@@ -1379,10 +1383,10 @@ formattable(rfAccuracies,
 # VARIABLE IMPORTANCE TABLE  ----------------------------------------------
 
 # count the number of times each variable was listed in the top n important 
-varImpCounts <- as.data.frame(table(c(t(rfVarImp[,2:13]))))
+#varImpCounts <- as.data.frame(table(c(t(rfVarImp[,2:13]))))
 
-ggplot(data = varImpCounts, aes(Var1,Freq)) + 
-  geom_col()
+#ggplot(data = varImpCounts, aes(Var1,Freq)) + 
+#  geom_col()
 
 
 
