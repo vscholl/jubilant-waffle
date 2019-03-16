@@ -114,7 +114,8 @@ print(paste0("There are ", as.character(length(mrs4point_mainCanopy$TreeNum)),
 ggplot2::ggplot() + 
   ggplot2::geom_sf(data = mrs4point_mainCanopy, size = 1, color = "black") + 
   ggtitle("MRS4point.shp filtered for Main Canopy Tree Numbers") + 
-  coord_sf()
+  coord_sf() + 
+  theme_bw()
 ```
 
 ```{r plot_all_stem_points, include=FALSE, eval=FALSE}
@@ -149,7 +150,8 @@ print(paste0("There are ", as.character(length(mrs4point$TreeNum)),
 ggplot2::ggplot() + 
   ggplot2::geom_sf(data = mrs4point, size = 1, color = "black") + 
   ggtitle("MRS4point.shp") + 
-  coord_sf()
+  coord_sf() + 
+  theme_bw()
 
 # filter the tree point shapefiles for entries with matching tree numbers
 # to the main canopy data (h3 == 1 from earlier)
@@ -205,7 +207,8 @@ ggplot2::ggplot() +
                    size = 1) + 
   ggtitle("MRS-04 Main Canopy stem points colored by species") + 
   coord_sf() +
-  scale_color_brewer(palette = "Spectral")
+  scale_color_brewer(palette = "Spectral") + 
+  theme_bw()
 ```
 
 ```{r plot_stems_on_rgb, echo=FALSE, results=TRUE}
@@ -303,7 +306,7 @@ wavelength_lut <- data.frame(wavelength = wavelengths,
                              stringsAsFactors = FALSE) 
 ```
 
-## Ribbon Plot 
+## Ribbon Plots 
 
 Compare the mean spectral reflectance per species. The shading represents +/- one standard deviation. 
 
@@ -425,12 +428,41 @@ ggplot(refl_tidy,
   # main plot title  
   ggtitle(paste0("MRS-04 Mean spectral reflectance per species: \n",
                  # std dev shading
-                 "(shading shows one standard deviation from mean refl range per wavelength)"))
+                 "(shading shows one standard deviation from mean refl range per wavelength)")) + 
+  theme_bw()
 
 # write plot to file 
 ggsave(paste0(out_dir,"/figures/","MRS04_ribbon_plot.png"), 
        width = 10, height = 6)
 ```
+
+```{r separate_ribbon_plots, echo=FALSE, results=TRUE}
+# FACET WRAP mean reflectance curves with ribbon (+/- 1 SD)
+  ggplot(refl_tidy, aes(x = wavelength, 
+                        y = mean_reflectance)) + 
+    facet_wrap(~taxonID) +
+    geom_ribbon(alpha = 0.5, aes(ymin = mean_minus_sd, 
+                                 ymax = mean_plus_sd, 
+                                 group = taxonID,
+                                 fill = taxonID)) + 
+    geom_line(aes(color = taxonID)) + 
+    scale_color_manual(values = shading_colors) + 
+    scale_fill_manual(values = shading_colors) + 
+    
+    # label X and Y axes 
+    labs(x = "wavelength (nm)", y = "reflectance") + 
+    
+    # set the y axis range to be consistent between plots
+    #ylim(0,as.numeric(max(na.omit(refl_tidy$mean_plus_sd)))) + 
+    ylim(0,y_max) + 
+    
+    # main plot title  
+    ggtitle(paste0("Mean Hyperspectral reflectance per species in MRS-04: ",
+                   # std dev shading
+                   "(shading shows one standard deviation from mean refl range per wavelength)")) + 
+    theme_bw()
+```
+
 
 ## Prepare the input data for RF classifier 
 
@@ -493,7 +525,8 @@ features <- cbind(features, hs_pca$x[,1:nPCs])
                        circle = TRUE # draw circle around center of data set
                         )   + 
       ggtitle("PCA biplot, PC1 and PC2") + 
-      scale_color_brewer(palette="Spectral")
+      scale_color_brewer(palette="Spectral") + 
+      theme_bw()
 ```
 
 ## Predict species using RF classifier 
