@@ -622,6 +622,8 @@ for(i in 1:nrow(shapefileLayerNames)){
                                         shapefileLayerNames$description[i],".csv")
   
   createRibbonPlot(wavelengths, extracted_features_filename)
+  
+  createSeparateRibbonPlots(wavelengths, extracted_features_filename)
  
 }
 
@@ -1368,17 +1370,6 @@ library(kableExtra)
 rfAccuracies %>%
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover","condensed", 
-                                      full_width=F, align = "center"))
-
-#https://www.littlemissdata.com/blog/prettytables
-library(formattable)
-colnames(rfAccuracies) <- c("Shapefile Description",
-                            "OOB \nOA [%]", "Independent Validation OA [%]", "Kappa")
-formattable(rfAccuracies, 
-            #align =c("l","c","c","c","c"), 
-            list(`shapefileDescription` = formatter(
-              "span", style = ~ style(color = "grey",font.weight = "bold")) 
-            ))
 
 
 # VARIABLE IMPORTANCE TABLE  ----------------------------------------------
@@ -1386,8 +1377,6 @@ formattable(rfAccuracies,
 # count the number of times each variable was listed in the top n important 
 varImpCounts <- as.data.frame(table(c(t(rfVarImp[,2:13]))))
 
-ggplot(data = varImpCounts, aes(Var1,Freq)) + 
-  geom_col()
 
 
 
