@@ -637,6 +637,13 @@ for(i in 1:nrow(shapefileLayerNames)){
 
 
 
+
+
+
+
+
+
+
 # count number of polygons and pixels per shapefile scenario ------------------
 for(i in 1:nrow(shapefileLayerNames)){
   print(i)
@@ -686,19 +693,26 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 
 
 
+
+
+
+
+
+
+
 # Random Forest Classification --------------------------------------------
 
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
 outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 outDescription <- "rf_allSamplesPerClass_ntree5000_allBandRefl_nVar6_mean-sd-RGB_independentValidationSet20percent/"
-outDescription <- "rf_neonvegIDsForBothShapefiles_ntree500_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
+outDescription <- "rf_neonvegIDsForBothShapefiles_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 
 
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
-ntree <- 500
+ntree <- 5000
 
 # boolean variable. if TRUE, select random minSamples per class to reduce bias
 randomMinSamples <- FALSE
@@ -712,7 +726,7 @@ independentValidationSet <- TRUE
 # randomly select this amount of data for training, use the rest for validation
 percentTrain <- 0.8 
 
-pcaInsteadOfWavelengths <- FALSE
+pcaInsteadOfWavelengths <- TRUE
 nPCs <- 2 # number of PCAs to keep 
 
 # keep most important variables and run RF again with reduced feature set 
@@ -915,7 +929,7 @@ for(i in 1:nrow(shapefileLayerNames)){
     # visualize where each sample falls on a plot with PC2 vs PC1 
     ggbiplot::ggbiplot(hs_pca, 
                        choices = 1:2, # which PCs to plot
-                       obs.scale = 1, var.scale = 1, # scale the observations and variables 
+                       obs.scale = 1, var.scale = 1, # scale observations & variables 
                        var.axes=FALSE, # remove arrows 
                        groups = df$taxonID, # color the points by species
                        ellipse = TRUE, # draw ellipse around each group
@@ -925,7 +939,9 @@ for(i in 1:nrow(shapefileLayerNames)){
       scale_color_brewer(palette="Spectral") + 
       theme_bw()
     # save to file 
-    ggplot2::ggsave(paste0(out_dir, outDescription, "pcaPlot_",shapefileLayerNames$description[i],".png"))
+    ggplot2::ggsave(paste0(out_dir, outDescription, 
+                           "pcaPlot_",shapefileLayerNames$description[i],
+                           ".png"))
     
   }
   
@@ -1025,13 +1041,15 @@ for(i in 1:nrow(shapefileLayerNames)){
   }
   
   
-  # train the RF model using the training set
+
+  # TRAIN RF CLASSIFIER using training set  ---------------------------------
   rf_startTime <- Sys.time()
   set.seed(104)
   rf_model <- randomForest::randomForest(as.factor(features$taxonID) ~ .,
                                          data=features, 
                                          importance=TRUE, 
-                                         ntree=ntree) # ntree is number of trees to grow
+                                         # ntree = # of trees to grow
+                                         ntree=ntree) 
   print("randomForest time elapsed for model training: ")
   print(Sys.time()-rf_startTime)
   
@@ -1076,11 +1094,14 @@ for(i in 1:nrow(shapefileLayerNames)){
   write("\nCohen's Kappa:", rf_output_file, append=TRUE) #newline
   capture.output(accuracy$kappa, file = rf_output_file, append=TRUE)
   
-  
-  # TO DO: create a nicely formatted summary data frame 
-  # using the confusion matrix, UA, PA, OA.....
-  
   # What variables were important? --> Consult the variable importance plot. 
+  varImportance <- data.frame(randomForest::importance(rf_model))
+  varImportance$feature <- rownames(varImportance)
+  varImportance <- varImportance %>% 
+    select(feature, MeanDecreaseAccuracy, MeanDecreaseGini, everything())
+  varImportanceMDA <- varImportance %>% dplyr::arrange(desc(MeanDecreaseAccuracy))
+  varImportanceMDG <- varImportance %>% dplyr::arrange(desc(MeanDecreaseGini))
+  
   
   # save varImpPlot to image file. create a filename and png object.  
   varImpFilename <- paste0(out_dir, 
@@ -1088,6 +1109,7 @@ for(i in 1:nrow(shapefileLayerNames)){
                            "varImpPlot_",
                            shapefileLayerNames$description[i],
                            ".png")
+  
   png(filename = varImpFilename)
   # make varImpPlot
   randomForest::varImpPlot(rf_model,
@@ -1128,42 +1150,32 @@ for(i in 1:nrow(shapefileLayerNames)){
   capture.output(rf_model, file = rf_output_file, append=TRUE)
   
   
-  
-  
-  
-  # variable importance, ordered from highest MDGini to lowest
-  write("\n20 most important variables, ranked by Mean Decrease Gini: \n", 
+
+  # VARIABLE IMPORTANCE -----------------------------------------------------
+
+  # Ordered from highest MDGini to lowest
+  write("\nVariable Importance, ranked by Mean Decrease Gini: \n", 
         rf_output_file, append=TRUE)
-  varImp <- as.data.frame(rf_model$importance[order(rf_model$importance[,"MeanDecreaseGini"],decreasing = TRUE),])
-  colnames(varImp)[colnames(varImp) == 'MeanDecreaseAccuracy'] <- 'MDAcc'
-  colnames(varImp)[colnames(varImp) == 'MeanDecreaseGini'] <- 'MDGini'
-  capture.output(varImp[1:20,],
+  capture.output(varImportanceMDG,
               file = rf_output_file,
               append=TRUE)
   
   write("\n", rf_output_file, append=TRUE)
   
   # RECORD TOP N MOST IMPORTANT VARIABLES BASED ON MEAN DECREASE GINI 
-  rfVarImp[i,(2+nVar):((1+nVar)+nVar)] <- rownames(varImp[1:nVar,])
-  
-  
+  rfVarImp[i,(2+nVar):((1+nVar)+nVar)] <- varImportanceMDG$feature[1:nVar]
   
   # variable importance, ordered from highest MDA to lowest
-  write("\n20 most important variables, ranked by MDA: \n", 
+  write("\nVariable Importance, ranked by MDA: \n", 
         rf_output_file, append=TRUE)
-  varImp <- varImp[order(varImp$MDAcc, decreasing=TRUE),]
-  capture.output(varImp[1:20,],
+  capture.output(varImportanceMDA,
                  file = rf_output_file,
-                 #sep = "\t",
-                 #row.names=TRUE,
-                 #col.names = TRUE,
                  append=TRUE)
   
   print(paste0("Top ", as.character(nVar)," most important variables ranked by MDA"))
-  print(rownames(varImp[1:nVar,])) 
-  
+  print(varImportanceMDA$feature[1:nVar]) 
   # RECORD TOP N MOST IMPORTANT VARIABLES BASED ON MEAN DECREASE ACCURACY 
-  rfVarImp[i,2:(nVar+1)] <- rownames(varImp[1:nVar,])
+  rfVarImp[i,2:(nVar+1)] <- varImportanceMDA$feature[1:nVar]
   
   
   # # TO DO: keep the n most important variables and run the classification again?
@@ -1202,13 +1214,13 @@ for(i in 1:nrow(shapefileLayerNames)){
       geom_boxplot(aes(fill = taxonID),outlier.size = 0.2) + 
       facet_wrap(. ~ feature_ordered,scales='free',ncol=3) + 
       scale_fill_brewer(palette = "Spectral") + 
+      theme_bw() + 
       theme(axis.title.x=element_blank(),
             axis.text.x=element_blank(),
             axis.ticks.x=element_blank(),
             plot.title = element_text(size = 10)) +
       ggtitle(paste0("Interspecies boxplot comparison of MDA most important features: \n",
-                     shapefileLayerNames$description[i])) + 
-      theme_bw()
+                     shapefileLayerNames$description[i])) 
     ggsave(g, filename = paste0(out_dir,outDescription,"boxplot_impVarMDA_",shapefileLayerNames$description[i],".png"),
            width = 6, height = 5, dpi = 300, units = "in", device='png')
     
@@ -1231,12 +1243,14 @@ for(i in 1:nrow(shapefileLayerNames)){
       geom_boxplot(aes(fill = taxonID),outlier.size = 0.2) + 
       facet_wrap(. ~ feature_ordered,scales='free',ncol=3) + 
       scale_fill_brewer(palette = "Spectral") + 
+      theme_bw() + 
       theme(axis.title.x=element_blank(),
             axis.text.x=element_blank(),
             axis.ticks.x=element_blank(),
             plot.title = element_text(size = 10)) +
       ggtitle(paste0("Interspecies boxplot comparison of MDG most important features: \n",
                      shapefileLayerNames$description[i]))
+    
     ggsave(g2, filename = paste0(out_dir,outDescription,"boxplot_impVarMDGini_",shapefileLayerNames$description[i],".png"),
            width = 6, height = 5, dpi = 300, units = "in", device='png')
     
@@ -1270,14 +1284,11 @@ print(end_time-start_time)
 library(kableExtra)
 rfAccuracies %>%
   kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover","condensed", 
+  kable_styling(bootstrap_options = c("striped", "hover","condensed"))
+
 
 
 # VARIABLE IMPORTANCE TABLE  ----------------------------------------------
-
-# count the number of times each variable was listed in the top n important 
-varImpCounts <- as.data.frame(table(c(t(rfVarImp[,2:13]))))
-
 
 
 
