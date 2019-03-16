@@ -1139,7 +1139,11 @@ createRibbonPlot <- function(wavelengths, reflFilename){
                    tools::file_path_sans_ext(str_split(basename(reflFilename),"ALL_")[[1]][2]),
                    " \n",
                    # std dev shading
-                   "(shading shows one standard deviation from mean refl range per wavelength)"))
+                   "(shading shows one standard deviation from mean refl range per wavelength)")) + 
+  
+    theme_bw()
+  
+  
   
     # write plot to file 
     ggsave(paste0(out_dir,"/figures/","ribbon_plot_", 
@@ -1287,7 +1291,10 @@ createSeparateRibbonPlots <- function(wavelengths, reflFilename){
                    tools::file_path_sans_ext(str_split(basename(reflFilename),"ALL_")[[1]][2]),
                    " \n",
                    # std dev shading
-                   "(shading shows one standard deviation from mean refl range per wavelength)"))
+                   "(shading shows one standard deviation from mean refl range per wavelength)")) + 
+    theme_bw()
+  
+  
   
   # write plot to file 
   ggsave(paste0(out_dir,"/figures/","separate_ribbon_plot_", 

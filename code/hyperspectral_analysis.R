@@ -637,168 +637,6 @@ for(i in 1:nrow(shapefileLayerNames)){
 
 
 
-# calculate JM distance - spectral separability ---------------------------
-
-for(i in 1:nrow(shapefileLayerNames)){
-  extracted_features_filename <- paste0(out_dir, site_code, "_spectral_reflectance_ALL_",
-                                        shapefileLayerNames$description[i],".csv")
-  
-  distances <- jmDist(extracted_features_filename)
-  print(distances)
-  
-  # Error in solve.default(sigma, m) : 
-  # system is computationally singular: reciprocal condition number = 4.4099e-22
-  
-}
-# spectral data with reflectance per wavelength (column), with each
-# row being a different pixel
-x <- features %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
-
-# class labels for each pixel. taxonIDs are originally factors.
-# reclassify them as numbers. 
-classes <- features$taxonID
-classNumbers <- matrix(nrow = length(classes))
-classNumbers[classes == "ABLAL"] <- 1
-classNumbers[classes == "PICOL"] <- 2
-classNumbers[classes == "PIEN"] <- 3
-classNumbers[classes == "PIFL2"] <- 4
-classes <- classNumbers
-
-# spectral separability ---------------------------------------------------
-
-# https://www.rdocumentation.org/packages/fpc/versions/2.1-11.1/topics/bhattacharyya.dist 
-#https://www.rdocumentation.org/packages/varSel/versions/0.1/topics/JMdist
-library(varSel)
-
-# create a data frame where each row is a reflectance spectrum and each 
-# coloumn is a wavelength
-X <- features %>% dplyr::select(c(wavelength_lut$xwavelength))
-X <- X[,1:100]
-  
-# a column vector of the lables. length(g) is equal to nrow(X).
-classes <- features$taxonID
-classNumbers <- matrix(nrow = length(classes))
-classNumbers[classes == "ABLAL"] <- 1
-classNumbers[classes == "PICOL"] <- 2
-classNumbers[classes == "PIEN"] <- 3
-classNumbers[classes == "PIFL2"] <- 4
-g <- classNumbers
-
-sep <- varSel::JMdist(g,X)
-
-
-# Jeffries-Matusita distance ----------------------------------------------
-
-# https://stats.stackexchange.com/questions/106325/jeffries-matusita-distance-for-14-variables
-
-# Compute the Mahalanobis distance between two vectors.
-mahalanobis <- function(m1, m2, sigma) {m <- m1 - m2; m %*% solve(sigma, m)}
-
-# Compute the Bhattacharyya distance between two multivariate normal distributions
-# given by their means and covariance matrices.
-bhattacharyya <- function(m1, s1, m2, s2) {
-  d <- function(u) determinant(u, logarithm=TRUE)$modulus # Log determinant of matrix u
-  s <- (s1 + s2)/2                                        # mean covariance matrix
-  mahalanobis(m1, m2, s)/8 + (d(s) - d(s1)/2 - d(s2)/2)/2
-}
-
-# Re-express the Bhattacharyya distance as the Jeffries-Matusita distance.
-# Values range from 0 (poor separability) to 2 (great separability)
-jeffries.matusita <- function(...) 2*(1-exp(-bhattacharyya(...)))
-
-#------------------------------------------------------------------------------------#
-# Generate sets of sample data for d bands aggregated into classes.
-d <- 14                          # Number of bands
-n <- rep(1000, 5)                # Class pixel counts
-n.class <- length(n)             # Number of classes
-require(MASS)                    # For generating multivariate normals
-set.seed(17)                     # Allows reproducible results
-
-# Create random mean vectors for the classes
-mu <- round(matrix(rnorm(d*n.class, 128, 1), ncol=n.class, byrow=TRUE), 0)
-# Initialize the data structure {x, classes}
-x <- matrix(double(), ncol=d, nrow=0)
-classes <- integer()
-# Generate the random data
-for (i in 1:n.class) {
-  # Create a random valid covariance matrix for this class
-  f <- svd(matrix(rnorm(d^2), ncol=d))
-  sigma <- t(f$v) %*% diag(rep(10, d)) %*% f$v
-  # Generate d-variate normals
-  x <- rbind(x, mvrnorm(n[i], mu[, i], sigma))
-  classes <- c(classes, rep(i, n[i]))
-}
-
-# Given a set of bands (as the columns of x) and a grouping variable in `class`,
-# compute the class means and covariance matrices (the "signatures").
-classes.stats <- by(x, classes, function(y) list(mean=apply(y, 2, mean), cov=cov(y)))
-
-# Compute the J-M distances between the classes.
-distances <- matrix(0.0, n.class, n.class)
-for (i in 2:n.class) {
-  m1 <- classes.stats[[i]]$mean; s1 <- classes.stats[[i]]$cov
-  for (j in 1:(i-1)) {
-    m2 <- classes.stats[[j]]$mean; s2 <- classes.stats[[j]]$cov
-    distances[i,j] <- distances[j,i] <- jeffries.matusita(m1,s1,m2,s2)
-  }
-}
-print(distances)
-#------------------------------------------------------------------------------------#
-
-# Jeffries-Matusita distance using NIWO spectra ---------------------------
-
-# spectral data with reflectance per wavelength (column), with each
-# row being a different pixel
-x <- features %>% dplyr::select(c(wavelength_lut$xwavelength)) %>% as.matrix()
-
-# class labels for each pixel. taxonIDs are originally factors.
-# reclassify them as numbers. 
-classes <- features$taxonID
-classNumbers <- matrix(nrow = length(classes))
-classNumbers[classes == "ABLAL"] <- 1
-classNumbers[classes == "PICOL"] <- 2
-classNumbers[classes == "PIEN"] <- 3
-classNumbers[classes == "PIFL2"] <- 4
-classes <- classNumbers
-
-# number of unique classes 
-n.class <- length(unique(classes))
-
-# calculate the mean and covariance for all spectra within each class 
-classes.stats <- by(x, classes, function(y) list(mean=apply(y, 2, mean), cov=cov(y)))
-
-# Compute the J-M distances between the classes.
-distances <- matrix(0.0, n.class, n.class)
-for (i in 2:n.class) {
-  m1 <- classes.stats[[i]]$mean; s1 <- classes.stats[[i]]$cov
-  for (j in 1:(i-1)) {
-    m2 <- classes.stats[[j]]$mean; s2 <- classes.stats[[j]]$cov
-    distances[i,j] <- distances[j,i] <- jeffries.matusita(m1,s1,m2,s2)
-  }
-}
-print(distances)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # count number of polygons and pixels per shapefile scenario ------------------
 for(i in 1:nrow(shapefileLayerNames)){
   print(i)
@@ -810,10 +648,36 @@ for(i in 1:nrow(shapefileLayerNames)){
   # read the values extracted from the data cube
   df_orig <- read.csv(extracted_features_filename)
   
+  # for the first iteration, create a row of values 
   if(i ==1){
     count <- c(length(unique(df_orig$indvdID)), length(unique(df_orig$pixelNumber)))
+    
+    # append to the initial row of count values in subsequent iterations 
   } else{
     count <- rbind(count, c(length(unique(df_orig$indvdID)), length(unique(df_orig$pixelNumber))))
+  }
+  
+  
+  # for the comparison between classification accuracies where each
+  # pair of shapefiles (the "raw NEON" version compared to the corresopnding
+  # "neon_veg" filtered version), create variables to keep track of the 
+  # individual tree ID's that exist within each neon_veg shapefile. 
+  # check for the neon_veg stems shapefile; keep track of the individual ID's
+  if(grepl("neonvegStems", extracted_features_filename)){
+    print(paste0("Recording individualIDs for neonveg Stems:", extracted_features_filename))
+    neonveg_stem_IDs <- unique(droplevels(df_orig$indvdID))
+  }
+  # check for the neon_veg halfDiameter shapefile; keep track of the individual ID's 
+  if(grepl("neonvegPolygons", extracted_features_filename) & 
+     grepl("halfDiam", extracted_features_filename)){
+    print(paste0("Recording individualIDs for neonveg halfDiam:", extracted_features_filename))
+    neonveg_halfDiam_IDs <- unique(droplevels(df_orig$indvdID))
+  }
+  # check for the neon_veg maxDiameter shapefile; keep track of the individual ID's 
+  if(grepl("neonvegPolygons", extracted_features_filename) & 
+     grepl("maxDiam", extracted_features_filename)){
+    print(paste0("Recording individualIDs for neonveg maxDiam:", extracted_features_filename))
+    neonveg_maxDiam_IDs <- unique(droplevels(df_orig$indvdID))
   }
 }
 countDF <- data.frame(count,
@@ -827,15 +691,21 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
 outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
-outDescription <- "rf_allSamplesPerClass_ntree5000_allBandRefl_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
+outDescription <- "rf_allSamplesPerClass_ntree5000_allBandRefl_nVar6_mean-sd-RGB_independentValidationSet20percent/"
+outDescription <- "rf_neonvegIDsForBothShapefiles_ntree500_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
+
 
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
-ntree <- 5000
+ntree <- 500
 
 # boolean variable. if TRUE, select random minSamples per class to reduce bias
 randomMinSamples <- FALSE
+
+# to remove the sample size bias, if TRUE this filters down each of the raw NEON 
+# shapefile data sets to only contain the individualIDs present in the neon_veg set 
+neonvegIDsForBothShapefiles <- TRUE
 
 # boolean variable. if TRUE, keep separate set for validation
 independentValidationSet <- TRUE 
@@ -948,6 +818,35 @@ for(i in 1:nrow(shapefileLayerNames)){
   # read the values extracted from the data cube
   df_orig <- read.csv(extracted_features_filename)
   
+  
+  # testing the influence of sampling bias 
+  if(neonvegIDsForBothShapefiles){
+    # filter the raw NEON data down to contain the same individual ID's as the 
+    # corresponding neon_veg data set. This will remove the potential influence
+    # of sampling bias (since there is nearly double # of samples for the raw
+    # NEON data sets) and just compare any influence that the clipping/filtering
+    # steps have on the polygons 
+    if(grepl("allStems", extracted_features_filename)){
+      print(paste0("Filtering individualIDs to match those in neonveg_Stems:", extracted_features_filename))
+      filterIDs <- neonveg_stem_IDs
+    }
+    # check for the neon_veg halfDiameter shapefile; keep track of the individual ID's 
+    if(grepl("allPolygons", extracted_features_filename) & 
+       grepl("halfDiam", extracted_features_filename)){
+      print(paste0("Filtering individualIDs to match those in neonveg_halfDiam:", extracted_features_filename))
+      filterIDs <- neonveg_halfDiam_IDs
+    }
+    # check for the neon_veg maxDiameter shapefile; keep track of the individual ID's 
+    if(grepl("allPolygons", extracted_features_filename) & 
+       grepl("maxDiam", extracted_features_filename)){
+      print(paste0("Filtering individualIDs to match those in neonveg maxDiam:", extracted_features_filename))
+      filterIDs <- neonveg_maxDiam_IDs
+    }
+    df_orig <- df_orig %>% dplyr::filter(indvdID %in% filterIDs) %>% droplevels()
+  }
+  
+  
+  
   # Remove any spectra that have a height == 0
   print(paste0(as.character(sum(df_orig$chm==0)), 
                " pixels have a height of 0 in the CHM"))
@@ -1023,7 +922,8 @@ for(i in 1:nrow(shapefileLayerNames)){
                        circle = TRUE # draw circle around center of data set
                         )   + 
       ggtitle("PCA biplot, PC1 and PC2") + 
-      scale_color_brewer(palette="Spectral")
+      scale_color_brewer(palette="Spectral") + 
+      theme_bw()
     # save to file 
     ggplot2::ggsave(paste0(out_dir, outDescription, "pcaPlot_",shapefileLayerNames$description[i],".png"))
     
@@ -1307,7 +1207,8 @@ for(i in 1:nrow(shapefileLayerNames)){
             axis.ticks.x=element_blank(),
             plot.title = element_text(size = 10)) +
       ggtitle(paste0("Interspecies boxplot comparison of MDA most important features: \n",
-                     shapefileLayerNames$description[i]))
+                     shapefileLayerNames$description[i])) + 
+      theme_bw()
     ggsave(g, filename = paste0(out_dir,outDescription,"boxplot_impVarMDA_",shapefileLayerNames$description[i],".png"),
            width = 6, height = 5, dpi = 300, units = "in", device='png')
     
