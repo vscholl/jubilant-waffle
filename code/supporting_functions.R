@@ -1279,7 +1279,8 @@ createSeparateRibbonPlots <- function(wavelengths, reflFilename){
     labs(x = "wavelength (nm)", y = "reflectance") + 
     
     # set the y axis range to be consistent between plots
-    ylim(0,as.numeric(max(na.omit(refl_tidy$mean_plus_sd)))) + 
+    #ylim(0,as.numeric(max(na.omit(refl_tidy$mean_plus_sd)))) + 
+    ylim(0,y_max) + 
     
     # main plot title  
     ggtitle(paste0("Mean Hyperspectral reflectance per species: ", 
