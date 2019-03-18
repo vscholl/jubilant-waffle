@@ -11,3 +11,5 @@ output/*
 # python jupyter notebook checkpoints
 .ipynb_checkpoints/* 
 
+# ignore QGIS project files 
+*.qgs
