@@ -2,6 +2,9 @@
 code/*.html
 code/*.pdf
 
+# R code history
+code/.Rhistory
+
 # data
 data/*
 
