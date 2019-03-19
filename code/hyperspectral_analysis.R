@@ -699,15 +699,16 @@ colnames(countDF) <- c("nIndvdID", "nPixelNumbers")
 
 
 
-
+###########################################################################
 # Random Forest Classification --------------------------------------------
+###########################################################################
+
 
 # At this point, all of the shapefile scenarios have been used to extract
 # features from the giant remote sensing data cube.
-outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 outDescription <- "rf_allSamplesPerClass_ntree5000_allBandRefl_nVar6_mean-sd-RGB_independentValidationSet20percent/"
 outDescription <- "rf_neonvegIDsForBothShapefiles_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
-
+outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 
 check_create_dir(paste0(out_dir,outDescription))
 
@@ -719,7 +720,7 @@ randomMinSamples <- FALSE
 
 # to remove the sample size bias, if TRUE this filters down each of the raw NEON 
 # shapefile data sets to only contain the individualIDs present in the neon_veg set 
-neonvegIDsForBothShapefiles <- TRUE
+neonvegIDsForBothShapefiles <- FALSE
 
 # boolean variable. if TRUE, keep separate set for validation
 independentValidationSet <- TRUE 
@@ -1102,19 +1103,50 @@ for(i in 1:nrow(shapefileLayerNames)){
   varImportanceMDA <- varImportance %>% dplyr::arrange(desc(MeanDecreaseAccuracy))
   varImportanceMDG <- varImportance %>% dplyr::arrange(desc(MeanDecreaseGini))
   
+  # create bar plot to illustrate variable importance MDA
+  ggplot(data = varImportanceMDA, aes(x = reorder(feature, MeanDecreaseAccuracy), 
+                                      y = MeanDecreaseAccuracy,
+                                      fill = MeanDecreaseAccuracy)) + 
+    geom_bar(stat = 'identity', color = "black", size = 0.1, show.legend = FALSE) + 
+    labs(x = "Variable", y = "Importance (MDA)") +
+    coord_flip() + 
+    theme_bw() + 
+    scale_fill_gradientn(colors = rev(RColorBrewer::brewer.pal(9,"BuGn")),
+                         values = rescale(varImportanceMDA$MeanDecreaseAccuracy, 
+                                          to = c(0, 1))) + 
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=14)) + 
+    ggtitle("Variable Importance: Mean Decrease in Accuracy")
   
-  # save varImpPlot to image file. create a filename and png object.  
-  varImpFilename <- paste0(out_dir, 
-                           outDescription,
-                           "varImpPlot_",
+  # save variable importance bar plot to image file 
+  ggsave(filename = paste0(out_dir, outDescription,"varImpPlot_MDA_",
                            shapefileLayerNames$description[i],
-                           ".png")
+                           ".png"))
   
-  png(filename = varImpFilename)
-  # make varImpPlot
-  randomForest::varImpPlot(rf_model,
-                           main = shapefileLayerNames$description[i])
-  dev.off() # saves the plot to the image filename  
+
+  # create bar plot to illustrate variable importance MDG
+  ggplot(data = varImportanceMDG, aes(x = reorder(feature, MeanDecreaseGini), 
+                                      y = MeanDecreaseGini,
+                                      fill = MeanDecreaseGini)) + 
+    geom_bar(stat = 'identity', color = "black", size = 0.1, show.legend = FALSE) + 
+    labs(x = "Variable", y = "Importance (MDG)") +
+    coord_flip() + 
+    theme_bw() + 
+    scale_fill_gradientn(colors = rev(RColorBrewer::brewer.pal(9,"OrRd")),
+                         values = rescale(varImportanceMDG$MeanDecreaseGini, 
+                                          to = c(0, 1))) + 
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=14)) + 
+    ggtitle("Variable Importance: Mean Decrease Gini")
+  
+    # save variable importance bar plot to image file 
+    ggsave(filename = paste0(out_dir, outDescription,"varImpPlot_MDG_",
+                             shapefileLayerNames$description[i],
+                             ".png"))
+  
+  # make varImpPlot using the default dot plot in randomForest
+  #randomForest::varImpPlot(rf_model,
+  #                         main = shapefileLayerNames$description[i])
   
   # save RF model to file 
   save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
