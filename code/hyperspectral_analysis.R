@@ -710,6 +710,7 @@ outDescription <- "rf_allSamplesPerClass_ntree5000_allBandRefl_nVar6_mean-sd-RGB
 outDescription <- "rf_neonvegIDsForBothShapefiles_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 
+
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
@@ -731,7 +732,7 @@ pcaInsteadOfWavelengths <- TRUE
 nPCs <- 2 # number of PCAs to keep 
 
 # keep most important variables and run RF again with reduced feature set 
-keepMostImpVar <- FALSE
+#keepMostImpVar <- FALSE
 
 # create boxplots and write to file 
 createBoxplots <- TRUE
@@ -814,9 +815,6 @@ if(independentValidationSet){
     features <- features %>% 
                   dplyr::select(-c(pixelNumber, eastingIDs, northingIDs))
   }
-
-
-
 
 
 # loop through all shapefile sets 
@@ -1056,6 +1054,10 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   print(rf_model)
   
+  # save RF model to file 
+  save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
+                               shapefileLayerNames$description[i],".RData"))
+  
   # write all relevant information to the textfile: 
   # shapefile name
   write(shapefileLayerNames$description[i], rf_output_file, append=TRUE)
@@ -1066,9 +1068,10 @@ for(i in 1:nrow(shapefileLayerNames)){
   colnames(featureSummary) <- c("taxonID","numberOfSamples")
   capture.output(featureSummary, file = rf_output_file, append=TRUE)
   
-  # x = predicted data; y = observed data (class labels) 
-  accuracy <- rfUtilities::accuracy(x = rf_model$predicted,
-                                    y = rf_model$y)
+  # y = predicted data; (horizontal axis)
+  # x = observed data (true class labels) (vertical axis)
+  accuracy <- rfUtilities::accuracy(x = rf_model$y,
+                                    y = rf_model$predicted)
   
   # record each accuracy metric in the table for a final comparison.
   # round each value to the nearest decimal place 
@@ -1095,62 +1098,8 @@ for(i in 1:nrow(shapefileLayerNames)){
   write("\nCohen's Kappa:", rf_output_file, append=TRUE) #newline
   capture.output(accuracy$kappa, file = rf_output_file, append=TRUE)
   
-  # What variables were important? --> Consult the variable importance plot. 
-  varImportance <- data.frame(randomForest::importance(rf_model))
-  varImportance$feature <- rownames(varImportance)
-  varImportance <- varImportance %>% 
-    select(feature, MeanDecreaseAccuracy, MeanDecreaseGini, everything())
-  varImportanceMDA <- varImportance %>% dplyr::arrange(desc(MeanDecreaseAccuracy))
-  varImportanceMDG <- varImportance %>% dplyr::arrange(desc(MeanDecreaseGini))
   
-  # create bar plot to illustrate variable importance MDA
-  ggplot(data = varImportanceMDA, aes(x = reorder(feature, MeanDecreaseAccuracy), 
-                                      y = MeanDecreaseAccuracy,
-                                      fill = MeanDecreaseAccuracy)) + 
-    geom_bar(stat = 'identity', color = "black", size = 0.1, show.legend = FALSE) + 
-    labs(x = "Variable", y = "Importance (MDA)") +
-    coord_flip() + 
-    theme_bw() + 
-    scale_fill_gradientn(colors = rev(RColorBrewer::brewer.pal(9,"BuGn")),
-                         values = rescale(varImportanceMDA$MeanDecreaseAccuracy, 
-                                          to = c(0, 1))) + 
-    theme(axis.text=element_text(size=12),
-          axis.title=element_text(size=14)) + 
-    ggtitle("Variable Importance: Mean Decrease in Accuracy")
-  
-  # save variable importance bar plot to image file 
-  ggsave(filename = paste0(out_dir, outDescription,"varImpPlot_MDA_",
-                           shapefileLayerNames$description[i],
-                           ".png"))
-  
-
-  # create bar plot to illustrate variable importance MDG
-  ggplot(data = varImportanceMDG, aes(x = reorder(feature, MeanDecreaseGini), 
-                                      y = MeanDecreaseGini,
-                                      fill = MeanDecreaseGini)) + 
-    geom_bar(stat = 'identity', color = "black", size = 0.1, show.legend = FALSE) + 
-    labs(x = "Variable", y = "Importance (MDG)") +
-    coord_flip() + 
-    theme_bw() + 
-    scale_fill_gradientn(colors = rev(RColorBrewer::brewer.pal(9,"OrRd")),
-                         values = rescale(varImportanceMDG$MeanDecreaseGini, 
-                                          to = c(0, 1))) + 
-    theme(axis.text=element_text(size=12),
-          axis.title=element_text(size=14)) + 
-    ggtitle("Variable Importance: Mean Decrease Gini")
-  
-    # save variable importance bar plot to image file 
-    ggsave(filename = paste0(out_dir, outDescription,"varImpPlot_MDG_",
-                             shapefileLayerNames$description[i],
-                             ".png"))
-  
-  # make varImpPlot using the default dot plot in randomForest
-  #randomForest::varImpPlot(rf_model,
-  #                         main = shapefileLayerNames$description[i])
-  
-  # save RF model to file 
-  save(rf_model, file = paste0(out_dir, outDescription,"rf_model_",
-                               shapefileLayerNames$description[i],".RData"))
+  # INDEPENDENT VALIDATION  -------------------------------------------------
   
   # predict species ID for validation set 
   if(independentValidationSet){
@@ -1182,9 +1131,62 @@ for(i in 1:nrow(shapefileLayerNames)){
   capture.output(rf_model, file = rf_output_file, append=TRUE)
   
   
-
-  # VARIABLE IMPORTANCE -----------------------------------------------------
-
+  # VARIABLE IMPORTANCE  ----------------------------------------------------
+  
+  # What variables were important? --> Consult the variable importance plot. 
+  varImportance <- data.frame(randomForest::importance(rf_model))
+  varImportance$feature <- rownames(varImportance)
+  varImportance <- varImportance %>% 
+    select(feature, MeanDecreaseAccuracy, MeanDecreaseGini, everything())
+  varImportanceMDA <- varImportance %>% dplyr::arrange(desc(MeanDecreaseAccuracy))
+  varImportanceMDG <- varImportance %>% dplyr::arrange(desc(MeanDecreaseGini))
+  
+  # create bar plot to illustrate variable importance MDA
+  ggplot(data = varImportanceMDA, aes(x = reorder(feature, MeanDecreaseAccuracy), 
+                                      y = MeanDecreaseAccuracy,
+                                      fill = MeanDecreaseAccuracy)) + 
+    geom_bar(stat = 'identity', color = "black", size = 0.1, show.legend = FALSE) + 
+    labs(x = "Variable", y = "Importance (MDA)") +
+    coord_flip() + 
+    theme_bw() + 
+    scale_fill_gradientn(colors = rev(RColorBrewer::brewer.pal(9,"BuGn")),
+                         values = rescale(varImportanceMDA$MeanDecreaseAccuracy, 
+                                          to = c(0, 1))) + 
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=14)) + 
+    ggtitle("Variable Importance: Mean Decrease in Accuracy")
+  
+  # save variable importance bar plot to image file 
+  ggsave(filename = paste0(out_dir, outDescription,"varImpPlot_MDA_",
+                           shapefileLayerNames$description[i],
+                           ".png"))
+  
+  
+  # create bar plot to illustrate variable importance MDG
+  ggplot(data = varImportanceMDG, aes(x = reorder(feature, MeanDecreaseGini), 
+                                      y = MeanDecreaseGini,
+                                      fill = MeanDecreaseGini)) + 
+    geom_bar(stat = 'identity', color = "black", size = 0.1, show.legend = FALSE) + 
+    labs(x = "Variable", y = "Importance (MDG)") +
+    coord_flip() + 
+    theme_bw() + 
+    scale_fill_gradientn(colors = rev(RColorBrewer::brewer.pal(9,"OrRd")),
+                         values = rescale(varImportanceMDG$MeanDecreaseGini, 
+                                          to = c(0, 1))) + 
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=14)) + 
+    ggtitle("Variable Importance: Mean Decrease Gini")
+  
+  # save variable importance bar plot to image file 
+  ggsave(filename = paste0(out_dir, outDescription,"varImpPlot_MDG_",
+                           shapefileLayerNames$description[i],
+                           ".png"))
+  
+  # make varImpPlot using the default dot plot in randomForest
+  #randomForest::varImpPlot(rf_model,
+  #                         main = shapefileLayerNames$description[i])
+  
+  
   # Ordered from highest MDGini to lowest
   write("\nVariable Importance, ranked by Mean Decrease Gini: \n", 
         rf_output_file, append=TRUE)
@@ -1225,7 +1227,8 @@ for(i in 1:nrow(shapefileLayerNames)){
   # }
   # initial test shows that this does not significantly improve the accuracy
   
-  
+
+  # INTERSPECIES VARIABLE COMPARISON BOXPLOTS -------------------------------
   
   if (createBoxplots == TRUE){
 
@@ -1317,11 +1320,6 @@ library(kableExtra)
 rfAccuracies %>%
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover","condensed"))
-
-
-
-# VARIABLE IMPORTANCE TABLE  ----------------------------------------------
-
 
 
 
