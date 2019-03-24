@@ -655,6 +655,10 @@ for(i in 1:nrow(shapefileLayerNames)){
   # read the values extracted from the data cube
   df_orig <- read.csv(extracted_features_filename)
   
+  # filter down to the species of interest 
+  df_orig <- df_orig %>% 
+    dplyr::filter(taxonID %in% taxonList)
+  
   # for the first iteration, create a row of values 
   if(i ==1){
     count <- c(length(unique(df_orig$indvdID)), length(unique(df_orig$pixelNumber)))
@@ -710,7 +714,6 @@ outDescription <- "rf_allSamplesPerClass_ntree5000_allBandRefl_nVar6_mean-sd-RGB
 outDescription <- "rf_neonvegIDsForBothShapefiles_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 outDescription <- "rf_allSamplesPerClass_ntree5000_pca2InsteadOfWavelengths_nVar6_mean-sd-RGB_independentValidationSet20percent/" 
 
-
 check_create_dir(paste0(out_dir,outDescription))
 
 # RF tuning parameter, number of trees to grow. deafualt value 500
@@ -721,7 +724,7 @@ randomMinSamples <- FALSE
 
 # to remove the sample size bias, if TRUE this filters down each of the raw NEON 
 # shapefile data sets to only contain the individualIDs present in the neon_veg set 
-neonvegIDsForBothShapefiles <- FALSE
+neonvegIDsForBothShapefiles <- TRUE
 
 # boolean variable. if TRUE, keep separate set for validation
 independentValidationSet <- TRUE 
@@ -756,6 +759,12 @@ rfVarImp$shapefileDescription <- shapefileLayerNames$description
 
 # start the timer
 start_time <- Sys.time()
+
+# read wavelengths if not previously created
+wavelengths = as.numeric(unlist(read.table(paste0(out_dir,"wavelengths.txt"),
+                                           sep="\n",
+                                           skip = 1,
+                                           col.names = 'wavelength')))
 
 
 if(independentValidationSet){
@@ -830,6 +839,10 @@ for(i in 1:nrow(shapefileLayerNames)){
   
   # read the values extracted from the data cube
   df_orig <- read.csv(extracted_features_filename)
+  
+  # filter down to the species of interest 
+  df_orig <- df_orig %>% 
+    dplyr::filter(taxonID %in% taxonList)
   
   
   # testing the influence of sampling bias 
