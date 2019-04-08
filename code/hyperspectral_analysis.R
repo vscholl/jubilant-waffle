@@ -724,14 +724,14 @@ randomMinSamples <- FALSE
 
 # to remove the sample size bias, if TRUE this filters down each of the raw NEON 
 # shapefile data sets to only contain the individualIDs present in the neon_veg set 
-neonvegIDsForBothShapefiles <- TRUE
+neonvegIDsForBothShapefiles <- FALSE
 
 # boolean variable. if TRUE, keep separate set for validation
 independentValidationSet <- TRUE 
 # randomly select this amount of data for training, use the rest for validation
 percentTrain <- 0.8 
 
-pcaInsteadOfWavelengths <- TRUE
+pcaInsteadOfWavelengths <- FALSE
 nPCs <- 2 # number of PCAs to keep 
 
 # keep most important variables and run RF again with reduced feature set 
@@ -1335,5 +1335,40 @@ rfAccuracies %>%
   kable_styling(bootstrap_options = c("striped", "hover","condensed"))
 
 
+# Accuracies displayed as bar plot 
+oa_oob <- c(70.1, 73.1, 71.2, 61.0, 68.3, 67.4)
+oa_indval <- c(56.2, 68.5, 68.5, 54.3, 65.4, 63.0)
+ref_labs <- c("all points", "all polygons, \nhalf diameter", "all polygons, \nmax diameter",
+          "neon_veg points", "neon_veg polygons, \nhalf diameter", "neon_veg polygons, \nmax diameter")
 
+# acc_df <- data.frame(ref_labs, oa_oob, oa_indval)
+# 
+# ggplot(acc_df, aes(x=ref_labs, y=oa_oob, fill=ref_labs)) +
+#   geom_bar(stat="identity", show.legend = FALSE)+
+#   ggtitle("Overall Accuracy comparison") + 
+#   scale_fill_manual(values=c("#000000", "#ACC3E7", "#5771D6",
+#                              "#C6C6C6","#ECCD9E", "#E69E23")) +
+#   theme_bw() + 
+#   coord_cartesian(ylim=c(60, 75)) + 
+#   labs(y = "Overall Accuracy") + 
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# convert from wide to long
+# for a grouped bar plot for both kinds of error 
+acc_df <- data.frame(ref_labs, OOB=oa_oob, IndVal=oa_indval)
+acc_df_long <- tidyr::gather(acc_df, oa_type, oa, OOB:IndVal)
+
+acc_df_long$oa_type<-as.factor(acc_df_long$oa_type)
+
+ggplot(data=acc_df_long, aes(x=ref_labs, y=oa, fill=oa_type)) +
+  geom_bar(stat="identity", color="black", size = 0.25,
+           position=position_dodge())+
+  theme_bw() + 
+  coord_cartesian(ylim=c(50, 75)) + 
+  labs(x = "Reference Data Set", y = "OA", 
+       fill = "OA metric")+ 
+  ggtitle("Overall Accuracy (OA) Comparison") + 
+  theme(text = element_text(size=20),
+        axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_fill_brewer(palette = "Greys")
   
